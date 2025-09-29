@@ -1,0 +1,1 @@
+nohup uvicorn biomni_api_server:app --host 0.0.0.0 --port 8009 > biomni.log &
