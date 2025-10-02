@@ -2016,12 +2016,17 @@ Each library is listed with its description to help you understand its functiona
         """
         conversation_state = getattr(self, "_conversation_state", None)
 
-        if conversation_state and hasattr(conversation_state, "get") and "messages" in conversation_state:
-            print(f"DEBUG: Using conversation state with {len(conversation_state['messages'])} messages")
+        # Always use self.log to avoid MemorySaver's 50-message limit
+        # The conversation_state from MemorySaver is limited and causes premature termination
+        if hasattr(self, 'log') and self.log:
+            # print(f"Using self.log with {len(self.log)} entries (avoiding conversation state limit)")
+            return self._normalize_log_messages(self.log)
+        elif conversation_state and hasattr(conversation_state, "get") and "messages" in conversation_state:
+            # print(f"Fallback: Using conversation state with {len(conversation_state['messages'])} messages")
             return self._normalize_conversation_state_messages(conversation_state["messages"])
         else:
-            print(f"DEBUG: Using self.log with {len(self.log)} entries")
-            return self._normalize_log_messages(self.log)
+            # print("No messages available")
+            return []
 
     def _normalize_conversation_state_messages(self, messages):
         """Convert conversation state messages to unified format.

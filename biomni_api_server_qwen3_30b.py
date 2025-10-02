@@ -11,20 +11,20 @@ import os
 
 # Initialize Biomni agent
 print("Initializing Biomni agent...")
-# agent = A1(
-#     path='./data', 
-#     llm='Qwen/Qwen3-30B-A3B-Instruct-2507-FP8',
-#     base_url='http://ludwig:8000/v1',
-#     api_key='EMPTY',
-#     commercial_mode=True
-# )
 agent = A1(
     path='./data', 
-    llm='Qwen3-Next-80B-A3B-Instruct',
-    base_url='http://alan:8000/v1',
+    llm='Qwen/Qwen3-30B-A3B-Instruct-2507-FP8',
+    base_url='http://ludwig:8000/v1',
     api_key='EMPTY',
     commercial_mode=True
 )
+# agent = A1(
+#     path='./data', 
+#     llm='Qwen3-Next-80B-A3B-Instruct',
+#     base_url='http://alan:8000/v1',
+#     api_key='EMPTY',
+#     commercial_mode=True
+# )
 print("Biomni agent ready!")
 print("IBD simulation data available at: ./data/biomni_data/ibd_sim")
 print("Available IBD data directories:")

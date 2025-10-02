@@ -230,3 +230,6 @@ data/ddinter_raw/
 *.csv
 *.txt
 *.json
+local_outputs/
+logs/
+sandbox/
