@@ -233,3 +233,48 @@ data/ddinter_raw/
 local_outputs/
 logs/
 sandbox/
+archive/
+
+# Session-generated outputs
+*.png
+*.pdf
+*.html
+*.zip
+
+# Pickle files (data caches, not code)
+*.pkl
+*.pickle
+
+# SQLite databases (caches)
+*.sqlite
+*.sqlite3
+*.db
+
+# Process logs
+nohup.out
+
+# Large data files
+*.gmt
+*.gz
+
+# Agent-generated supplementary data
+supplementary/
+supplementary_*/
+paper_supplementary/
+extracted_data/
+tests/
+
+# Database schema caches
+biomni/tool/schema_db/
+
+# Build artifacts
+biomni_api_server_*_temp.py
+
+# Temporary files
+download_file.jsp
+
+# Session backups (will be added per AGENTS rules)
+DEV_DOCS/session_backups/
+
+.github
+AGENTS
