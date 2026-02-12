@@ -55,7 +55,7 @@ description = [
         ],
     },
     {
-        "description": "Query PubMed for papers based on the provided search query.",
+        "description": "Query PubMed for papers based on the provided search query. Automatically falls back to Google search if PubMed returns no results.",
         "name": "query_pubmed",
         "optional_parameters": [
             {
@@ -69,6 +69,12 @@ description = [
                 "description": "Maximum number of retry attempts with modified queries.",
                 "name": "max_retries",
                 "type": "int",
+            },
+            {
+                "default": True,
+                "description": "If True, falls back to Google search when PubMed returns no results.",
+                "name": "fallback_to_google",
+                "type": "bool",
             },
         ],
         "required_parameters": [

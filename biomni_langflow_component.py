@@ -119,6 +119,21 @@ class BiomniComponent(CustomComponent):
                 if result.get("data"):
                     assistant_reply += f"\n\n[Structured Data Available: {type(result['data']).__name__}]"
                 
+                # Add PDF link if available
+                pdf_path = result.get("pdf_path")
+                if pdf_path:
+                    # Extract timestamp folder and PDF filename from the path
+                    # pdf_path looks like: ./local_outputs/20241002_174708_123/conversation_20241002_174708_123.pdf
+                    import os
+                    pdf_filename = os.path.basename(pdf_path)
+                    timestamp_folder = os.path.basename(os.path.dirname(pdf_path))
+                    
+                    # Generate URL using the existing HTTP server at port 8100
+                    pdf_url = f"http://alan:8100/{timestamp_folder}/{pdf_filename}"
+                    
+                    assistant_reply += f"\n\n📄 **Conversation Report**: [View PDF Analysis]({pdf_url})"
+                    assistant_reply += f"\n\n*Click the link above to view the detailed analysis report with visualizations and complete execution steps.*"
+                
                 # Handle output length limit
                 if max_output_length > 0 and len(assistant_reply) > max_output_length:
                     truncated_reply = assistant_reply[:max_output_length]

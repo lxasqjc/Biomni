@@ -136,7 +136,7 @@ def query_scholar(query: str) -> str:
         return f"Error querying Google Scholar: {e}"
 
 
-def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3) -> str:
+def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3, fallback_to_google: bool = True) -> str:
     """Query PubMed for papers based on the provided search query.
 
     Parameters
@@ -144,6 +144,7 @@ def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3) -> str:
     - query (str): The search query string.
     - max_papers (int): The maximum number of papers to retrieve (default: 10).
     - max_retries (int): Maximum number of retry attempts with modified queries (default: 3).
+    - fallback_to_google (bool): If True, falls back to Google search when PubMed returns no results (default: True).
 
     Returns
     -------
@@ -173,7 +174,20 @@ def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3) -> str:
             )
             return results
         else:
-            return "No papers found on PubMed after multiple query attempts."
+            # Fallback to Google search if enabled
+            if fallback_to_google:
+                print(f"[PubMed] No results found for query: '{query}'. Falling back to Google Search...")
+                try:
+                    google_results = search_google(query + " research paper", num_results=max_papers)
+                    if google_results and google_results.strip():
+                        return f"[Note: PubMed returned no results after {max_retries} retry attempts. Showing Google Search results:]\n\n{google_results}"
+                    else:
+                        return "No papers found on PubMed or Google Search."
+                except Exception as google_error:
+                    print(f"[PubMed] Google fallback also failed: {google_error}")
+                    return "No papers found on PubMed after multiple query attempts. Google fallback also failed."
+            else:
+                return "No papers found on PubMed after multiple query attempts."
     except Exception as e:
         return f"Error querying PubMed: {e}"
 

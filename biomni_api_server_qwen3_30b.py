@@ -14,7 +14,7 @@ print("Initializing Biomni agent...")
 agent = A1(
     path='./data', 
     llm='Qwen/Qwen3-30B-A3B-Instruct-2507-FP8',
-    base_url='http://ludwig:8000/v1',
+    base_url='http://ludwig.astrazeneca.net:8000/v1',
     api_key='EMPTY',
     commercial_mode=True
 )
