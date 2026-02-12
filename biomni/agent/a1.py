@@ -64,6 +64,7 @@ class A1:
         api_key: str | None = None,
         commercial_mode: bool | None = None,
         expected_data_lake_files: list | None = None,
+        output_folder: str | None = None,
     ):
         """Initialize the biomni agent.
 
@@ -76,6 +77,7 @@ class A1:
             base_url: Base URL for custom model serving (e.g., "http://localhost:8000/v1")
             api_key: API key for the custom LLM
             commercial_mode: If True, excludes datasets that require commercial licenses or are non-commercial only
+            output_folder: Directory where generated files (plots, CSVs, etc.) should be saved
 
         """
         # Use default_config values for unspecified parameters
@@ -189,6 +191,12 @@ class A1:
 
         self.path = os.path.join(path, "biomni_data")
         module2api = read_module2api()
+
+        # Store output folder for file operations (sandbox support)
+        self.output_folder = output_folder
+        if output_folder:
+            os.makedirs(output_folder, exist_ok=True)
+            print(f"📁 Output folder: {output_folder}")
 
         self.llm = get_llm(
             llm,
@@ -1389,7 +1397,17 @@ Each library is listed with its description to help you understand its functiona
 
                     # Inject custom functions into the Python execution environment
                     self._inject_custom_functions_to_repl()
-                    result = run_with_timeout(run_python_repl, [code], timeout=timeout)
+                    
+                    # Pass output_folder to run_python_repl if available
+                    if hasattr(self, 'output_folder') and self.output_folder:
+                        result = run_with_timeout(
+                            run_python_repl, 
+                            args=[code], 
+                            kwargs={'working_dir': self.output_folder},
+                            timeout=timeout
+                        )
+                    else:
+                        result = run_with_timeout(run_python_repl, [code], timeout=timeout)
 
                     # Plots are now captured directly in the execution entry above
 
@@ -1917,7 +1935,7 @@ Each library is listed with its description to help you understand its functiona
             print("PDF saving is disabled. No file will be saved.")
             return
 
-        # Ensure directory exists
+        # Ensure directory exists (only if we're actually saving)
         directory = os.path.dirname(filepath)
         if directory:  # Only create directory if it's not empty
             os.makedirs(directory, exist_ok=True)
