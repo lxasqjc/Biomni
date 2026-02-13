@@ -83,10 +83,30 @@ def main():
                 pdf_path = os.path.join(PDF_OUTPUT_DIR, pdf_filename)
                 
                 print(f"\n📄 Generating PDF report: {pdf_filename}")
-                agent.save_conversation_history(pdf_path, save_pdf=True)
-                latest_pdf_path[0] = pdf_path
                 
-                return pdf_path
+                # Populate agent.log from main_history_copy for PDF generation
+                # The agent's internal log is used by save_conversation_history()
+                agent.log = []
+                for msg in main_history_copy:
+                    # Create log entries that match the expected format
+                    agent.log.append({
+                        'role': msg['role'],
+                        'content': msg['content'],
+                        'type': 'message'
+                    })
+                
+                # Now save the conversation with the populated log
+                agent.save_conversation_history(pdf_path, save_pdf=True)
+                
+                # Verify PDF was created
+                if os.path.exists(pdf_path):
+                    print(f"✅ PDF created successfully: {pdf_path}")
+                    latest_pdf_path[0] = pdf_path
+                    return pdf_path
+                else:
+                    print(f"⚠️ PDF file not found after generation: {pdf_path}")
+                    return None
+                    
             except Exception as e:
                 print(f"❌ Error generating PDF: {e}")
                 import traceback
