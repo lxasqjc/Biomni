@@ -2006,9 +2006,23 @@ Each library is listed with its description to help you understand its functiona
     def _inject_custom_functions_to_repl(self):
         """Inject custom functions into the Python REPL execution environment.
         This makes custom tools available during code execution.
+        Also injects DATA_PATH and BIOMNI_DATA_PATH for sandbox compatibility.
         """
         custom_functions = getattr(self, "_custom_functions", {})
         inject_custom_functions_to_repl(custom_functions)
+        
+        # Also inject data paths into the persistent namespace for sandbox compatibility
+        # This allows code in sandbox to access data files using absolute paths
+        from biomni.tool.support_tools import _persistent_namespace
+        import os
+        
+        # Inject absolute data paths
+        if hasattr(self, 'path') and self.path:
+            data_root = os.path.dirname(self.path)  # Get parent of biomni_data
+            _persistent_namespace['DATA_PATH'] = data_root
+            _persistent_namespace['BIOMNI_DATA_PATH'] = self.path
+            _persistent_namespace['os'] = os  # Ensure os module is available
+            _persistent_namespace['pd'] = __import__('pandas')  # Ensure pandas is available
 
     def create_mcp_server(self, tool_modules=None):
         """
