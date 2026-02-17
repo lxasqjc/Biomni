@@ -19,19 +19,21 @@ from time import time
 
 # Configuration
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_OUTPUTS_DIR = os.path.join(SCRIPT_DIR, 'local_outputs')
+
 AGENT_CONFIG = {
     'path': os.path.join(SCRIPT_DIR, 'data'),
     'llm': 'Qwen/Qwen3-Next-80B-A3B-Instruct-FP8',
     'base_url': 'https://vllm.paas-jade.astrazeneca.net/v1',
     'api_key': 'natura15tup1d1ty',
     'commercial_mode': True,
-    'output_folder': os.path.join(SCRIPT_DIR, 'local_outputs/gradio_demo'),
+    'output_folder': None,  # Will be set dynamically per session
     'use_tool_retriever': False
 }
 
 # PDF report settings
-PDF_OUTPUT_DIR = os.path.join(SCRIPT_DIR, 'local_outputs/gradio_demo/reports')
 ENABLE_PDF_REPORTS = True
+HTTP_SERVER_BASE_URL = "http://alan.astrazeneca.net:8100"  # HTTP server serving local_outputs/
 
 # Gradio-specific settings
 GRADIO_PORT = int(os.getenv('GRADIO_PORT', '7861'))
@@ -41,68 +43,75 @@ REQUIRE_VERIFICATION = os.getenv('GRADIO_REQUIRE_AUTH', 'False').lower() == 'tru
 
 def main():
     # Ensure output directories exist
-    os.makedirs(AGENT_CONFIG['output_folder'], exist_ok=True)
-    if ENABLE_PDF_REPORTS:
-        os.makedirs(PDF_OUTPUT_DIR, exist_ok=True)
+    os.makedirs(LOCAL_OUTPUTS_DIR, exist_ok=True)
     
     print("=" * 80)
     print("Biomni Gradio UI Demo with PDF Reports")
     print("=" * 80)
     print(f"Configuration:")
     print(f"  - Model: {AGENT_CONFIG['llm']}")
-    print(f"  - Output Folder: {AGENT_CONFIG['output_folder']}")
+    print(f"  - Output Directory: {LOCAL_OUTPUTS_DIR}")
     print(f"  - PDF Reports: {'Enabled' if ENABLE_PDF_REPORTS else 'Disabled'}")
     if ENABLE_PDF_REPORTS:
-        print(f"  - PDF Directory: {PDF_OUTPUT_DIR}")
+        print(f"  - HTTP Server: {HTTP_SERVER_BASE_URL}")
     print(f"\nGradio Settings:")
     print(f"  - Port: {GRADIO_PORT}")
     print(f"  - Server: {SERVER_NAME}")
     print("=" * 80)
     
     try:
-        print("\n🚀 Initializing Biomni Agent...")
+        print("\n🚀 Initializing Biomni Agent (output_folder will be set per session)...")
+        # Create session-specific output folder
+        session_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        session_folder = os.path.join(LOCAL_OUTPUTS_DIR, session_id)
+        os.makedirs(session_folder, exist_ok=True)
+        AGENT_CONFIG['output_folder'] = session_folder
+        
         agent = A1(**AGENT_CONFIG)
-        print("✅ Agent initialized successfully!")
+        print(f"✅ Agent initialized successfully!")
+        print(f"📁 Session folder: {session_folder}")
         
         # Conversation tracking
         main_history_copy = []
-        conversation_counter = [0]  # Use list to make it mutable in nested functions
-        latest_pdf_path = [None]
         
         SUPPORTED_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf")
         
         def generate_pdf_report():
-            """Generate PDF report for current conversation"""
+            """Generate PDF report and return HTTP link"""
             if not ENABLE_PDF_REPORTS:
                 return None
             
             try:
-                conversation_counter[0] += 1
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                pdf_filename = f"biomni_report_{timestamp}_{conversation_counter[0]:03d}.pdf"
-                pdf_path = os.path.join(PDF_OUTPUT_DIR, pdf_filename)
+                # Get session folder name from agent's output_folder
+                session_folder_name = os.path.basename(agent.output_folder)
+                
+                # PDF filename matches the session pattern
+                pdf_filename = f"conversation_{session_folder_name}.pdf"
+                pdf_path = os.path.join(agent.output_folder, pdf_filename)
                 
                 print(f"\n📄 Generating PDF report: {pdf_filename}")
                 
                 # Populate agent.log from main_history_copy for PDF generation
-                # The agent's internal log is used by save_conversation_history()
                 agent.log = []
                 for msg in main_history_copy:
-                    # Create log entries that match the expected format
                     agent.log.append({
                         'role': msg['role'],
                         'content': msg['content'],
                         'type': 'message'
                     })
                 
-                # Now save the conversation with the populated log
+                # Save the conversation with the populated log
                 agent.save_conversation_history(pdf_path, save_pdf=True)
                 
                 # Verify PDF was created
                 if os.path.exists(pdf_path):
                     print(f"✅ PDF created successfully: {pdf_path}")
-                    latest_pdf_path[0] = pdf_path
-                    return pdf_path
+                    
+                    # Construct HTTP link
+                    http_url = f"{HTTP_SERVER_BASE_URL}/{session_folder_name}/{pdf_filename}"
+                    print(f"🔗 PDF accessible at: {http_url}")
+                    
+                    return http_url
                 else:
                     print(f"⚠️ PDF file not found after generation: {pdf_path}")
                     return None
@@ -304,30 +313,24 @@ def main():
             )
             
             # Generate PDF report
-            pdf_path = generate_pdf_report()
+            pdf_url = generate_pdf_report()
             
-            if pdf_path and os.path.exists(pdf_path):
-                # Add PDF download notification
+            if pdf_url:
+                # Add PDF link notification to chat
                 main_history.append(
                     gr.ChatMessage(
                         role="assistant",
-                        content=f"📄 Conversation report saved: {os.path.basename(pdf_path)}",
-                        metadata={"title": "📥 Download Available"}
+                        content=f"📄 **Conversation Report Available**\n\n[Click here to download PDF]({pdf_url})",
+                        metadata={"title": "📥 PDF Report"}
                     )
                 )
             
-            yield inner_history, main_history, pdf_path if pdf_path else None
-        
-        def download_latest_pdf():
-            """Return the latest PDF for download"""
-            if latest_pdf_path[0] and os.path.exists(latest_pdf_path[0]):
-                return latest_pdf_path[0]
-            return None
+            yield inner_history, main_history
         
         # Create Gradio interface
         with gr.Blocks(title="Biomni A1 Agent") as demo:
             gr.Markdown("# Biomni A1 Agent - Interactive Biomedical Research Assistant")
-            gr.Markdown("Ask questions, analyze data, and download PDF reports of your conversation.")
+            gr.Markdown("Ask questions, analyze data, and get PDF reports of your conversation.")
             
             with gr.Row():
                 with gr.Column(scale=1):
@@ -356,23 +359,12 @@ def main():
                     scale=4
                 )
             
-            with gr.Row():
-                pdf_output = gr.File(label="📄 Download Conversation Report", visible=True, interactive=False)
-                download_btn = gr.Button("⬇️ Download Latest PDF", size="sm", visible=ENABLE_PDF_REPORTS)
-            
             # Bind submission
             prompt_input.submit(
                 generate_response,
-                [prompt_input, innerloop_chatbot, main_chatbot, pdf_output],
-                [innerloop_chatbot, main_chatbot, pdf_output]
+                [prompt_input, innerloop_chatbot, main_chatbot],
+                [innerloop_chatbot, main_chatbot]
             ).then(lambda: gr.MultimodalTextbox(value=None), None, [prompt_input])
-            
-            # Bind download button
-            if ENABLE_PDF_REPORTS:
-                download_btn.click(
-                    download_latest_pdf,
-                    outputs=[pdf_output]
-                )
         
         # Launch
         print(f"\n🎨 Launching Gradio UI on http://{SERVER_NAME}:{GRADIO_PORT}")
