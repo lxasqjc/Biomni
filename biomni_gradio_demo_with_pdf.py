@@ -122,7 +122,7 @@ def main():
                 traceback.print_exc()
                 return None
         
-        def generate_response(prompt_input, inner_history=None, main_history=None, pdf_file=None):
+        def generate_response(prompt_input, inner_history=None, main_history=None):
             """Generate response and create PDF report"""
             if main_history is None:
                 main_history = []
@@ -137,7 +137,7 @@ def main():
             
             # Add "Executor is working on it" message
             main_history.append(gr.ChatMessage(role="assistant", content="Executor is working on it 👉"))
-            yield inner_history, main_history, None
+            yield inner_history, main_history
             
             # Process uploaded files
             for file_info in files:
@@ -190,7 +190,7 @@ def main():
                                     metadata={"title": "🤔 Reasoning"}
                                 )
                             )
-                            yield inner_history, main_history, None
+                            yield inner_history, main_history
                     
                     # Check for solution
                     solution_match = re.search(r"<solution>(.*?)</solution>", message.content, re.DOTALL)
@@ -205,7 +205,7 @@ def main():
                         )
                         main_history_copy.append({"role": "assistant", "content": solution})
                         solution_found = True
-                        yield inner_history, main_history, None
+                        yield inner_history, main_history
                     
                     # Check for execute tag
                     execute_match = re.search(r"<execute>(.*?)</execute>", message.content, re.DOTALL)
@@ -226,7 +226,7 @@ def main():
                         )
                         inner_history.append(code_msg)
                         code_execution_messages.append(code_msg)
-                        yield inner_history, main_history, None
+                        yield inner_history, main_history
                     
                     # Check for observation
                     observation_match = re.search(r"<observation>(.*?)</observation>", message.content, re.DOTALL)
@@ -240,7 +240,7 @@ def main():
                                 metadata={"status": "done", "log": "Observation from code execution", "collapsed": True}
                             )
                         )
-                        yield inner_history, main_history, None
+                        yield inner_history, main_history
                         
                         # Check for generated files
                         if isinstance(observation, str) and any(ext in observation for ext in SUPPORTED_EXTENSIONS):
@@ -282,7 +282,7 @@ def main():
                                                 )
                                             )
                                 
-                                yield inner_history, main_history, None
+                                yield inner_history, main_history
                 
                 t = time()
             
