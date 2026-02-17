@@ -18,6 +18,8 @@ def get_llm(
     base_url: str | None = None,
     api_key: str | None = None,
     config: Optional["BiomniConfig"] = None,
+    logprobs: bool | None = None,
+    top_logprobs: int | None = None,
 ) -> BaseChatModel:
     """
     Get a language model instance based on the specified model name and source.
@@ -259,7 +261,7 @@ def get_llm(
             )
         # Custom LLM serving such as SGLang. Must expose an openai compatible API.
         assert base_url is not None, "base_url must be provided for customly served LLMs"
-        llm = ChatOpenAI(
+        kwargs = dict(
             model=model,
             temperature=temperature,
             max_tokens=8192,
@@ -267,6 +269,11 @@ def get_llm(
             base_url=base_url,
             api_key=api_key,
         )
+        if logprobs is not None:
+            kwargs["logprobs"] = logprobs
+        if top_logprobs is not None:
+            kwargs["top_logprobs"] = top_logprobs
+        llm = ChatOpenAI(**kwargs)
         return llm
 
     else:

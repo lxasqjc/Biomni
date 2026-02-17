@@ -66,6 +66,8 @@ class A1:
         commercial_mode: bool | None = None,
         expected_data_lake_files: list | None = None,
         output_folder: str | None = None,
+        logprobs: bool | None = None,
+        top_logprobs: int | None = None,
     ):
         """Initialize the biomni agent.
 
@@ -209,7 +211,11 @@ class A1:
             base_url=base_url,
             api_key=api_key,
             config=default_config,
+            logprobs=logprobs,
+            top_logprobs=top_logprobs,
         )
+        self._logprobs_enabled = bool(logprobs)
+        self._all_logprobs = []  # Collect logprobs from all generate() calls
         self.module2api = module2api
         self.use_tool_retriever = use_tool_retriever
 
@@ -1397,6 +1403,12 @@ Each library is listed with its description to help you understand its functiona
             messages = [SystemMessage(content=system_prompt)] + state["messages"]
             response = self.llm.invoke(messages)
 
+            # Capture logprobs from response metadata if enabled
+            if self._logprobs_enabled and hasattr(response, 'response_metadata'):
+                step_logprobs = response.response_metadata.get('logprobs', None)
+                if step_logprobs:
+                    self._all_logprobs.append(step_logprobs)
+
             # Normalize Responses API content blocks (list of dicts) into a plain string
             content = response.content
             if isinstance(content, list):
@@ -1783,6 +1795,7 @@ Each library is listed with its description to help you understand its functiona
         """
         self.critic_count = 0
         self.user_task = prompt
+        self._all_logprobs = []  # Reset logprobs for this run
 
         if self.use_tool_retriever:
             selected_resources_names = self._prepare_resources_for_retrieval(prompt)
@@ -1804,6 +1817,8 @@ Each library is listed with its description to help you understand its functiona
         # Store the conversation state for markdown generation
         self._conversation_state = final_state
 
+        if self._logprobs_enabled and self._all_logprobs:
+            return self.log, message.content, self._all_logprobs
         return self.log, message.content
 
     def go_stream(self, prompt) -> Generator[dict, None, None]:

@@ -58,14 +58,17 @@ class ChatRequest(BaseModel):
     prompt: Optional[str] = None  # For backward compatibility
     stream: Optional[bool] = False  # For future streaming support
     save_pdf: Optional[bool] = True  # Whether to save conversation as PDF
+    logprobs: Optional[bool] = None  # Request logprobs from underlying vLLM
+    top_logprobs: Optional[int] = None  # Number of top logprobs to return (e.g., 20)
 
 class ChatResponse(BaseModel):
     response: str
     log: Optional[str] = None  # Biomni execution log
     data: Optional[Any] = None  # For structured output
     pdf_path: Optional[str] = None  # Path to saved PDF file
+    logprobs: Optional[Any] = None  # Logprobs from vLLM (list of per-step logprobs)
 
-async def run_biomni_sync(query: str, save_pdf: bool = True):
+async def run_biomni_sync(query: str, save_pdf: bool = True, logprobs: bool = None, top_logprobs: int = None):
     """Run Biomni agent asynchronously with fresh instance per request"""
     # Generate timestamp for this query
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # millisecond precision
@@ -77,13 +80,20 @@ async def run_biomni_sync(query: str, save_pdf: bool = True):
         
         # CREATE FRESH AGENT INSTANCE PER REQUEST (fixes memory + concurrency)
         print(f"[Biomni API] Creating fresh agent instance...")
-        agent = A1(**AGENT_CONFIG, output_folder=output_folder)
+        agent_kwargs = dict(**AGENT_CONFIG, output_folder=output_folder)
+        if logprobs:
+            agent_kwargs['logprobs'] = logprobs
+            agent_kwargs['top_logprobs'] = top_logprobs if top_logprobs else 20
+        agent = A1(**agent_kwargs)
         
         # Run the agent - simplified call without output_queue
         result = agent.go(query)
         
         # Handle different return types
-        if isinstance(result, tuple) and len(result) == 2:
+        logprobs_data = None
+        if isinstance(result, tuple) and len(result) == 3:
+            log, response, logprobs_data = result
+        elif isinstance(result, tuple) and len(result) == 2:
             log, response = result
         elif isinstance(result, str):
             log = None
@@ -126,7 +136,8 @@ async def run_biomni_sync(query: str, save_pdf: bool = True):
             "response": response,
             "log": log,
             "data": None,  # Can be extended for structured data
-            "pdf_path": pdf_path
+            "pdf_path": pdf_path,
+            "logprobs": logprobs_data
         }
         
     except Exception as e:
@@ -137,7 +148,8 @@ async def run_biomni_sync(query: str, save_pdf: bool = True):
             "response": f"Error: {str(e)}",
             "log": None,
             "data": None,
-            "pdf_path": None
+            "pdf_path": None,
+            "logprobs": None
         }
     finally:
         # EXPLICIT CLEANUP: Clear agent reference for garbage collection
@@ -169,13 +181,19 @@ async def chat_endpoint(request: ChatRequest):
         return ChatResponse(response="No query provided.")
     
     # Run Biomni agent (now async)
-    result = await run_biomni_sync(query, save_pdf=request.save_pdf if request.save_pdf is not None else True)
+    result = await run_biomni_sync(
+        query,
+        save_pdf=request.save_pdf if request.save_pdf is not None else True,
+        logprobs=request.logprobs,
+        top_logprobs=request.top_logprobs,
+    )
     
     return ChatResponse(
         response=result["response"],
         log=result["log"],
         data=result["data"],
-        pdf_path=result["pdf_path"]
+        pdf_path=result["pdf_path"],
+        logprobs=result.get("logprobs")
     )
 
 @app.post("/v1/chat/completions")
@@ -183,17 +201,31 @@ async def openai_chat_completions(request: dict):
     """OpenAI-compatible endpoint"""
     messages = request.get("messages", [])
     save_pdf = request.get("save_pdf", True)  # Default to True for backward compatibility
+    req_logprobs = request.get("logprobs", None)
+    req_top_logprobs = request.get("top_logprobs", None)
     our_request = ChatRequest(
         messages=[Message(role=m["role"], content=m["content"]) for m in messages],
-        save_pdf=save_pdf
+        save_pdf=save_pdf,
+        logprobs=req_logprobs if isinstance(req_logprobs, bool) else (True if req_logprobs else None),
+        top_logprobs=req_top_logprobs,
     )
     response = await chat_endpoint(our_request)
     
-    # Return in OpenAI format
+    # Build vLLM-compatible response
+    choice = {"message": {"role": "assistant", "content": response.response}}
+    if response.logprobs:
+        # Return logprobs in vLLM/OpenAI format under choice.logprobs.content
+        # Flatten all steps' logprobs into a single list
+        all_content = []
+        for step_lp in response.logprobs:
+            content_tokens = step_lp.get('content', []) if isinstance(step_lp, dict) else []
+            all_content.extend(content_tokens)
+        choice["logprobs"] = {"content": all_content}
+    
     return {
-        "choices": [{"message": {"role": "assistant", "content": response.response}}],
+        "choices": [choice],
         "model": "biomni",
-        "usage": {"total_tokens": 0}
+        "usage": {"total_tokens": len(choice.get('logprobs', {}).get('content', [])) if choice.get('logprobs') else 0}
     }
 
 @app.get("/ibd-data-info")
