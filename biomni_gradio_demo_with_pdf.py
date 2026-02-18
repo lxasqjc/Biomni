@@ -78,6 +78,14 @@ def main():
         
         def generate_pdf_report():
             """Generate PDF report and return HTTP link"""
+            # Debug: write to file to track if function is called
+            debug_file = os.path.join(SCRIPT_DIR, 'pdf_debug.log')
+            with open(debug_file, 'a') as f:
+                f.write(f"\n{'='*60}\n")
+                f.write(f"generate_pdf_report called at {datetime.now()}\n")
+                f.write(f"ENABLE_PDF_REPORTS: {ENABLE_PDF_REPORTS}\n")
+                f.write(f"main_history_copy length: {len(main_history_copy)}\n")
+            
             if not ENABLE_PDF_REPORTS:
                 return None
             
@@ -89,7 +97,9 @@ def main():
                 pdf_filename = f"conversation_{session_folder_name}.pdf"
                 pdf_path = os.path.join(agent.output_folder, pdf_filename)
                 
-                print(f"\n📄 Generating PDF report: {pdf_filename}")
+                with open(debug_file, 'a') as f:
+                    f.write(f"Session folder: {session_folder_name}\n")
+                    f.write(f"PDF path: {pdf_path}\n")
                 
                 # Populate agent.log from main_history_copy for PDF generation
                 agent.log = []
@@ -100,26 +110,61 @@ def main():
                         'type': 'message'
                     })
                 
-                # Save the conversation with the populated log
-                agent.save_conversation_history(pdf_path, save_pdf=True)
+                with open(debug_file, 'a') as f:
+                    f.write(f"Populated agent.log with {len(agent.log)} messages\n")
+                    # Log first few messages for debugging
+                    for i, msg in enumerate(agent.log[:3]):
+                        f.write(f"  Message {i}: role={msg['role']}, content_len={len(msg['content'])}\n")
+                
+                # Redirect stdout/stderr to capture any errors
+                import sys
+                import io
+                old_stdout = sys.stdout
+                old_stderr = sys.stderr
+                sys.stdout = captured_output = io.StringIO()
+                sys.stderr = captured_error = io.StringIO()
+                
+                try:
+                    # Save the conversation with the populated log
+                    agent.save_conversation_history(pdf_path, save_pdf=True)
+                finally:
+                    # Restore stdout/stderr
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                    
+                    # Log captured output
+                    stdout_content = captured_output.getvalue()
+                    stderr_content = captured_error.getvalue()
+                    
+                    with open(debug_file, 'a') as f:
+                        if stdout_content:
+                            f.write(f"Captured stdout:\n{stdout_content}\n")
+                        if stderr_content:
+                            f.write(f"Captured stderr:\n{stderr_content}\n")
                 
                 # Verify PDF was created
                 if os.path.exists(pdf_path):
-                    print(f"✅ PDF created successfully: {pdf_path}")
-                    
-                    # Construct HTTP link
                     http_url = f"{HTTP_SERVER_BASE_URL}/{session_folder_name}/{pdf_filename}"
-                    print(f"🔗 PDF accessible at: {http_url}")
+                    
+                    with open(debug_file, 'a') as f:
+                        f.write(f"✅ PDF created successfully\n")
+                        f.write(f"   File size: {os.path.getsize(pdf_path)} bytes\n")
+                        f.write(f"HTTP URL: {http_url}\n")
                     
                     return http_url
                 else:
-                    print(f"⚠️ PDF file not found after generation: {pdf_path}")
+                    with open(debug_file, 'a') as f:
+                        f.write(f"⚠️ PDF file not found after generation\n")
+                        # Check if any files were created in the folder
+                        folder_contents = os.listdir(agent.output_folder)
+                        f.write(f"Folder contents: {folder_contents}\n")
                     return None
                     
             except Exception as e:
-                print(f"❌ Error generating PDF: {e}")
-                import traceback
-                traceback.print_exc()
+                with open(debug_file, 'a') as f:
+                    f.write(f"❌ Error: {e}\n")
+                    import traceback
+                    f.write(traceback.format_exc())
                 return None
         
         def generate_response(prompt_input, inner_history=None, main_history=None):

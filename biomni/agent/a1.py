@@ -2156,21 +2156,27 @@ Each library is listed with its description to help you understand its functiona
 
         try:
             # Add timeout for PDF generation to prevent hanging
+            # Note: signal only works in main thread, so we need to check first
             import signal
+            import threading
+            
+            use_timeout = threading.current_thread() is threading.main_thread()
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError("PDF generation timed out")
+            if use_timeout:
+                def timeout_handler(signum, frame):
+                    raise TimeoutError("PDF generation timed out")
 
-            # Set timeout to 60 seconds
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(60)
+                # Set timeout to 60 seconds
+                signal.signal(signal.SIGALRM, timeout_handler)
+                signal.alarm(60)
 
             try:
                 self._convert_markdown_to_pdf(temp_markdown_path, pdf_path)
                 print(f"Conversation history saved as PDF: {pdf_path}")
                 print(f"Total steps recorded: {len(self.log)}")
             finally:
-                signal.alarm(0)  # Cancel the alarm
+                if use_timeout:
+                    signal.alarm(0)  # Cancel the alarm
 
         except TimeoutError:
             print("Warning: PDF generation timed out after 60 seconds")
