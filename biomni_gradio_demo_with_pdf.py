@@ -73,6 +73,7 @@ def main():
         
         # Conversation tracking
         main_history_copy = []
+        stop_requested = [False]  # Flag to signal stop request
         
         SUPPORTED_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf")
         
@@ -174,6 +175,9 @@ def main():
             if inner_history is None:
                 inner_history = []
             
+            # Reset stop flag at start of new generation
+            stop_requested[0] = False
+            
             text_input = prompt_input.get("text", "")
             files = prompt_input.get("files", [])
             
@@ -209,6 +213,25 @@ def main():
             
             # Stream agent responses
             for s in agent.app.stream(inputs, stream_mode="values", config=config):
+                # Check if stop requested
+                if stop_requested[0]:
+                    inner_history.append(
+                        gr.ChatMessage(
+                            role="assistant",
+                            content="⚠️ Execution stopped by user",
+                            metadata={"title": "🛑 Stopped"}
+                        )
+                    )
+                    main_history.append(
+                        gr.ChatMessage(
+                            role="assistant",
+                            content="Execution stopped by user",
+                            metadata={"title": "🛑 Stopped"}
+                        )
+                    )
+                    yield inner_history, main_history
+                    return
+                
                 t_step = time() - t
                 message = s["messages"][-1]
                 
@@ -372,6 +395,11 @@ def main():
             
             yield inner_history, main_history
         
+        def stop_execution():
+            """Stop the current execution"""
+            stop_requested[0] = True
+            return "Stopping..."
+        
         # Create Gradio interface
         with gr.Blocks(title="Biomni A1 Agent") as demo:
             gr.Markdown("# Biomni A1 Agent - Interactive Biomedical Research Assistant")
@@ -403,6 +431,9 @@ def main():
                     show_label=False,
                     scale=4
                 )
+                stop_btn = gr.Button("🛑 Stop", size="sm", variant="stop", scale=1)
+            
+            status_text = gr.Textbox(label="Status", visible=False, interactive=False)
             
             # Bind submission
             prompt_input.submit(
@@ -410,6 +441,12 @@ def main():
                 [prompt_input, innerloop_chatbot, main_chatbot],
                 [innerloop_chatbot, main_chatbot]
             ).then(lambda: gr.MultimodalTextbox(value=None), None, [prompt_input])
+            
+            # Bind stop button
+            stop_btn.click(
+                stop_execution,
+                outputs=[status_text]
+            )
         
         # Launch
         print(f"\n🎨 Launching Gradio UI on http://{SERVER_NAME}:{GRADIO_PORT}")
