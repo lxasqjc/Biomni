@@ -415,7 +415,7 @@ def main():
                     # BLOCKING WAIT - poll until user approves/rejects
                     print("⏸️ Entering blocking wait for approval...")
                     while hitl_state.waiting_for_approval:
-                        time.sleep(0.5)  # Poll every 500ms
+                        sleep(0.5)  # Poll every 500ms
                         if stop_requested[0]:
                             print("🛑 Stop requested during plan approval")
                             return
@@ -533,7 +533,7 @@ def main():
                                 hitl_state.pause_for_approval()
                                 print(f"⏸️ Waiting for step {hitl_state.current_step_index} approval...")
                                 while hitl_state.waiting_for_approval:
-                                    time.sleep(0.3)
+                                    sleep(0.3)
                                     if stop_requested[0]:
                                         print("🛑 Stop requested during step approval")
                                         return
