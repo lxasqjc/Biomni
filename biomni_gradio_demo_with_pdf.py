@@ -294,12 +294,16 @@ def main():
                     f.write(traceback.format_exc())
                 return None
         
-        def generate_response(prompt_input, inner_history=None, main_history=None):
+        def generate_response(prompt_input, inner_history=None, main_history=None, mode="🚀 YOLO (Full Automation)"):
             """Generate response and create PDF report"""
             if main_history is None:
                 main_history = []
             if inner_history is None:
                 inner_history = []
+            
+            # Reset HITL state for new query and update mode
+            hitl_state.reset()
+            hitl_state.mode = "hitl" if "HITL" in mode else "yolo"
             
             # Reset stop flag at start of new generation
             stop_requested[0] = False
@@ -561,6 +565,17 @@ def main():
                         show_share_button=True
                     )
             
+            # Execution mode selector
+            execution_mode = gr.Radio(
+                choices=[
+                    "🚀 YOLO (Full Automation)",
+                    "🤝 HITL (Review & Approve)"
+                ],
+                value="🚀 YOLO (Full Automation)",
+                label="Execution Mode",
+                info="YOLO: automatic execution | HITL: review plans before execution"
+            )
+            
             with gr.Row():
                 prompt_input = gr.MultimodalTextbox(
                     interactive=True,
@@ -576,7 +591,7 @@ def main():
             # Bind submission
             prompt_input.submit(
                 generate_response,
-                [prompt_input, innerloop_chatbot, main_chatbot],
+                [prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
                 [innerloop_chatbot, main_chatbot]
             ).then(lambda: gr.MultimodalTextbox(value=None), None, [prompt_input])
             
