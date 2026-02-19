@@ -364,11 +364,26 @@ def main():
                 
                 # Check if paused for approval (HITL mode)
                 if hitl_state.should_pause_for_plan_approval():
-                    # TODO Phase 2: Add approval UI here
-                    # For now, just log and continue (will be implemented in Phase 2)
-                    print(f"⏸️ Would pause here for plan approval (HITL mode) - Phase 2 TODO")
-                    # Temporarily auto-approve to maintain current behavior
+                    # In HITL mode, show plan in chat and inform user
+                    # Note: True blocking approval requires architectural changes
+                    # For now, we log the plan and auto-approve, but UI is in place for future enhancement
+                    print(f"⏸️ Plan detected in HITL mode - plan shown to user")
+                    
+                    # Add informational message
+                    main_history.append(
+                        gr.ChatMessage(
+                            role="assistant",
+                            content=f"📋 **Plan Generated ({hitl_state.total_steps} steps)**\n\n{hitl_state.current_plan}\n\n_HITL mode active - plan review UI coming in next phase_",
+                            metadata={"title": "📋 Plan"}
+                        )
+                    )
+                    yield inner_history, main_history
+                    
+                    # Temporarily auto-approve to maintain execution flow
+                    # TODO: Implement true blocking approval in Phase 2 Task 2.2 continuation
                     hitl_state.resume_execution()
+
+
                 
                 t_step = time() - t
                 message = s["messages"][-1]
@@ -542,6 +557,23 @@ def main():
             stop_requested[0] = True
             return "Stopping..."
         
+        def approve_plan():
+            """Approve the plan and continue execution"""
+            if hitl_state.approval_pending:
+                hitl_state.resume_execution()
+                # Send continuation message to agent
+                continuation_prompt = {"text": "I approve the plan. Please proceed with execution."}
+                # This will trigger generate_response which will continue
+                return continuation_prompt
+            return None
+        
+        def reject_plan():
+            """Reject the plan and stop execution"""
+            hitl_state.reset()
+            stop_requested[0] = True
+            return gr.Textbox(value="Plan rejected. Execution stopped.", visible=True)
+
+        
         # Create Gradio interface
         with gr.Blocks(title="Biomni A1 Agent") as demo:
             gr.Markdown("# Biomni A1 Agent - Interactive Biomedical Research Assistant")
@@ -576,6 +608,20 @@ def main():
                 info="YOLO: automatic execution | HITL: review plans before execution"
             )
             
+            # Plan approval section (hidden by default)
+            with gr.Accordion("📋 Plan Approval Required", open=True, visible=False) as approval_accordion:
+                gr.Markdown("**Review the generated plan before execution:**")
+                plan_display = gr.Textbox(
+                    label="Generated Plan",
+                    lines=10,
+                    interactive=False,
+                    visible=True
+                )
+                with gr.Row():
+                    approve_btn = gr.Button("✅ Approve & Execute", variant="primary", scale=2)
+                    reject_btn = gr.Button("❌ Reject & Stop", variant="stop", scale=1)
+                approval_status = gr.Textbox(label="Status", visible=False, interactive=False)
+            
             with gr.Row():
                 prompt_input = gr.MultimodalTextbox(
                     interactive=True,
@@ -600,6 +646,17 @@ def main():
                 stop_execution,
                 outputs=[status_text]
             )
+            
+            # Bind approval buttons (for future use when blocking approval is implemented)
+            approve_btn.click(
+                approve_plan,
+                outputs=[approval_status]
+            )
+            reject_btn.click(
+                reject_plan,
+                outputs=[approval_status]
+            )
+
         
         # Launch
         print(f"\n🎨 Launching Gradio UI on http://{SERVER_NAME}:{GRADIO_PORT}")
