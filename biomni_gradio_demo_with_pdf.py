@@ -371,7 +371,14 @@ def main():
                     yield inner_history, main_history
                     return
                 
-                # Check if paused for approval (HITL mode)
+                t_step = time() - t
+                message = s["messages"][-1]
+                
+                # Extract and track plan if present (HITL mode only) - DO THIS FIRST
+                if isinstance(message.content, str):
+                    update_plan_in_hitl_state(message.content)
+                
+                # Check if paused for approval (HITL mode) - AFTER plan extraction
                 if hitl_state.should_pause_for_plan_approval():
                     # ACTUALLY PAUSE - stop streaming and wait for user
                     hitl_state.pause_for_approval()
@@ -400,15 +407,6 @@ def main():
                     # STOP STREAMING - wait for user button click
                     # The approval buttons will trigger continuation
                     return
-
-
-                
-                t_step = time() - t
-                message = s["messages"][-1]
-                
-                # Extract and track plan if present (HITL mode only)
-                if isinstance(message.content, str):
-                    update_plan_in_hitl_state(message.content)
                 
                 if message.content == text_input:
                     t = time()
@@ -843,7 +841,12 @@ def main():
         # Launch
         print(f"\n🎨 Launching Gradio UI on http://{SERVER_NAME}:{GRADIO_PORT}")
         print("   Press Ctrl+C to stop the server\n")
-        demo.launch(share=SHARE, server_name=SERVER_NAME, server_port=GRADIO_PORT)
+        demo.launch(
+            share=SHARE, 
+            server_name=SERVER_NAME, 
+            server_port=GRADIO_PORT,
+            allowed_paths=["/data/jinc", "/tmp", LOCAL_OUTPUTS_DIR]
+        )
         
     except KeyboardInterrupt:
         print("\n\n👋 Shutting down Gradio UI...")
