@@ -405,13 +405,49 @@ def main():
                     inner_history.append(
                         gr.ChatMessage(
                             role="assistant",
-                            content="⏸️ **Execution Paused** - Waiting for user approval...\n\nUse the 'Plan Review & Editing' section to approve or modify the plan.",
+                            content="⏸️ **Execution Paused** - Waiting for user approval...\n\nUse the 'HITL Approval Controls' to approve or modify the plan.",
                             metadata={"title": "🤝 HITL Mode"}
                         )
                     )
                     
-                    # CRITICAL: Update the UI components to show approval section
-                    # We need to return updates for plan_display, plan_editor, and accordion visibility
+                    yield inner_history, main_history
+                    
+                    # BLOCKING WAIT - poll until user approves/rejects
+                    print("⏸️ Entering blocking wait for approval...")
+                    while hitl_state.waiting_for_approval:
+                        time.sleep(0.5)  # Poll every 500ms
+                        if stop_requested[0]:
+                            print("🛑 Stop requested during plan approval")
+                            return
+                    
+                    print(f"✅ Approval received: {hitl_state.approval_response}")
+                    
+                    # Handle different approval responses
+                    if hitl_state.approval_response == "rejected":
+                        main_history.append(
+                            gr.ChatMessage(
+                                role="assistant",
+                                content="❌ Plan rejected by user. Execution cancelled.",
+                                metadata={"title": "❌ Cancelled"}
+                            )
+                        )
+                        yield inner_history, main_history
+                        return
+                    elif hitl_state.approval_response in ["edited_replan", "edited_execute"]:
+                        # User edited - send the edited plan back to agent
+                        # This happens in the button handler which restarts with new prompt
+                        # For now, just continue (edit handlers restart generate_response)
+                        return
+                    # else: approval_response == "approved" - just continue the stream
+                    
+                    # Show approval confirmation
+                    main_history.append(
+                        gr.ChatMessage(
+                            role="assistant",
+                            content="✅ Plan approved. Continuing execution...",
+                            metadata={"title": "✅ Approved"}
+                        )
+                    )
                     yield inner_history, main_history
                     
                     # STOP STREAMING - wait for user button click
@@ -493,9 +529,42 @@ def main():
                                 
                                 yield inner_history, main_history
                                 
-                                # STOP and wait for approval
-                                # User must click approve button to continue
-                                return
+                                # BLOCKING WAIT for step approval
+                                hitl_state.pause_for_approval()
+                                print(f"⏸️ Waiting for step {hitl_state.current_step_index} approval...")
+                                while hitl_state.waiting_for_approval:
+                                    time.sleep(0.3)
+                                    if stop_requested[0]:
+                                        print("🛑 Stop requested during step approval")
+                                        return
+                                
+                                print(f"✅ Step {hitl_state.current_step_index} approved: {hitl_state.approval_response}")
+                                
+                                # Handle step approval response
+                                if hitl_state.approval_response == "rejected":
+                                    main_history.append(
+                                        gr.ChatMessage(
+                                            role="assistant",
+                                            content=f"❌ Step {hitl_state.current_step_index} rejected. Execution cancelled.",
+                                            metadata={"title": "❌ Cancelled"}
+                                        )
+                                    )
+                                    yield inner_history, main_history
+                                    return
+                                elif hitl_state.approval_response == "skip":
+                                    main_history.append(
+                                        gr.ChatMessage(
+                                            role="assistant",
+                                            content=f"⏭️ Step {hitl_state.current_step_index} skipped.",
+                                            metadata={"title": "⏭️ Skipped"}
+                                        )
+                                    )
+                                    yield inner_history, main_history
+                                    continue  # Skip this step, go to next
+                                elif hitl_state.approval_response == "batch_approve":
+                                    hitl_state.batch_approve_remaining = True
+                                    print("⏩ Batch approve activated - all remaining steps will auto-execute")
+                                # else: "approved" - continue normally
                         
                         # Track step in HITL mode (for info)
                         if hitl_state.mode == "hitl":
@@ -631,7 +700,6 @@ def main():
             if hitl_state.waiting_for_approval:
                 hitl_state.approval_response = "approved"
                 hitl_state.resume_execution()
-                hitl_state.continuation_prompt = "I approve the plan. Please proceed with execution."
                 print("✅ Plan approved - continuing execution")
                 return "✅ Plan approved. Continuing..."
             return "No plan pending approval."
@@ -660,37 +728,55 @@ def main():
         
         def reject_plan():
             """Reject the plan and stop execution"""
-            hitl_state.reset()
-            stop_requested[0] = True
-            return "❌ Plan rejected. Execution stopped."
+            if hitl_state.waiting_for_approval:
+                hitl_state.approval_response = "rejected"
+                hitl_state.resume_execution()
+                print("❌ Plan rejected")
+                return "❌ Plan rejected. Execution stopped."
+            return "No plan pending approval."
         
-        def approve_step():
-            """Approve current execution step and continue"""
-            if hitl_state.current_step_index > 0:
-                hitl_state.approve_step(hitl_state.current_step_index)
-                # Set continuation to trigger next execution
-                hitl_state.continuation_prompt = "Approved. Continue with the execution."
-                print(f"✅ Step {hitl_state.current_step_index} approved - continuing")
-                return f"✅ Step {hitl_state.current_step_index} approved."
-            return "No step to approve."
+        def approve_this_step():
+            """Approve current step and continue"""
+            if hitl_state.waiting_for_approval:
+                hitl_state.approval_response = "approved"
+                hitl_state.resume_execution()
+                print(f"✅ Step {hitl_state.current_step_index} approved")
+                return f"✅ Step {hitl_state.current_step_index} approved. Continuing..."
+            return "No step pending approval."
         
         def approve_all_steps():
-            """Approve all remaining steps"""
-            hitl_state.approve_all_remaining()
-            hitl_state.continuation_prompt = "All remaining steps approved. Continue with execution."
-            print("✅ All remaining steps approved - continuing")
-            return "✅ All remaining steps approved."
+            """Approve all remaining steps (batch approve)"""
+            if hitl_state.waiting_for_approval:
+                hitl_state.approval_response = "batch_approve"
+                hitl_state.batch_approve_remaining = True
+                hitl_state.resume_execution()
+                print("⏩ Batch approval - all remaining steps will execute")
+                return "⏩ All remaining steps approved. Continuing..."
+            return "No step pending approval."
         
         def skip_step():
             """Skip current step"""
-            if hitl_state.current_step_index > 0:
+            if hitl_state.waiting_for_approval:
+                hitl_state.approval_response = "skip"
+                hitl_state.resume_execution()
+                print(f"⏭️ Step {hitl_state.current_step_index} skipped")
                 return f"⏭️ Step {hitl_state.current_step_index} skipped."
-            return "No step to skip."
+            return "No step pending approval."
         
-        def stop_step_execution():
+        def stop_step():
             """Stop execution at current step"""
+            if hitl_state.waiting_for_approval:
+                hitl_state.approval_response = "rejected"
+                hitl_state.resume_execution()
+                print("🛑 Execution stopped by user")
+                return "🛑 Execution stopped."
+            return "No step pending approval."
+        
+        def reject_plan():
+            """Reject the plan and stop execution"""
+            hitl_state.reset()
             stop_requested[0] = True
-            return "🛑 Execution stopped."
+            return "❌ Plan rejected. Execution stopped."
         
         # Create Gradio interface
         with gr.Blocks(title="Biomni A1 Agent") as demo:
@@ -797,54 +883,22 @@ def main():
                 outputs=[status_text]
             )
             
-            # Bind approval buttons with continuation logic
-            def approve_and_continue():
-                status = approve_plan()
-                if hitl_state.continuation_prompt:
-                    # Trigger continuation by submitting the prompt
-                    return status, gr.Accordion(visible=False), {"text": hitl_state.continuation_prompt}
-                return status, gr.Accordion(visible=True), None
-            
+            # Bind approval buttons - simple flag setting, no restart
             approve_btn.click(
-                approve_and_continue,
-                outputs=[approval_status, approval_accordion, prompt_input]
-            ).then(
-                # Auto-submit the continuation prompt
-                generate_response,
-                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
-                outputs=[innerloop_chatbot, main_chatbot]
+                approve_plan,
+                outputs=[approval_status]
             )
-            
-            def edit_replan_and_continue(edited_plan):
-                status = edit_and_replan(edited_plan)
-                if hitl_state.continuation_prompt:
-                    return status, gr.Accordion(visible=False), {"text": hitl_state.continuation_prompt}
-                return status, gr.Accordion(visible=True), None
             
             edit_replan_btn.click(
-                edit_replan_and_continue,
+                edit_and_replan,
                 inputs=[plan_editor],
-                outputs=[approval_status, approval_accordion, prompt_input]
-            ).then(
-                generate_response,
-                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
-                outputs=[innerloop_chatbot, main_chatbot]
+                outputs=[approval_status]
             )
             
-            def edit_execute_and_continue(edited_plan):
-                status = edit_and_execute(edited_plan)
-                if hitl_state.continuation_prompt:
-                    return status, gr.Accordion(visible=False), {"text": hitl_state.continuation_prompt}
-                return status, gr.Accordion(visible=True), None
-            
             edit_execute_btn.click(
-                edit_execute_and_continue,
+                edit_and_execute,
                 inputs=[plan_editor],
-                outputs=[approval_status, approval_accordion, prompt_input]
-            ).then(
-                generate_response,
-                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
-                outputs=[innerloop_chatbot, main_chatbot]
+                outputs=[approval_status]
             )
             
             reject_btn.click(
@@ -852,47 +906,26 @@ def main():
                 outputs=[approval_status]
             )
             
-            # Bind step approval buttons with continuation
-            def approve_step_and_continue():
-                status = approve_step()
-                if hitl_state.continuation_prompt:
-                    return status, {"text": hitl_state.continuation_prompt}
-                return status, None
-            
+            # Bind step approval buttons - simple flag setting, no restart
             approve_step_btn.click(
-                approve_step_and_continue,
-                outputs=[step_status, prompt_input]
-            ).then(
-                generate_response,
-                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
-                outputs=[innerloop_chatbot, main_chatbot]
+                approve_this_step,
+                outputs=[approval_status]
             )
             
-            def approve_all_and_continue():
-                status = approve_all_steps()
-                if hitl_state.continuation_prompt:
-                    return status, {"text": hitl_state.continuation_prompt}
-                return status, None
-            
             approve_all_btn.click(
-                approve_all_and_continue,
-                outputs=[step_status, prompt_input]
-            ).then(
-                generate_response,
-                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
-                outputs=[innerloop_chatbot, main_chatbot]
+                approve_all_steps,
+                outputs=[approval_status]
             )
             
             skip_step_btn.click(
                 skip_step,
-                outputs=[step_status]
+                outputs=[approval_status]
             )
             
             stop_step_btn.click(
-                stop_step_execution,
-                outputs=[step_status]
+                stop_step,
+                outputs=[approval_status]
             )
-
 
         
         # Launch
