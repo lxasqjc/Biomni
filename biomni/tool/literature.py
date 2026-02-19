@@ -254,64 +254,155 @@ def advanced_web_search_claude(
     """
     import random
 
-    import anthropic
-
-    try:
-        from biomni.config import default_config
-
-        model = default_config.llm
-        api_key = default_config.api_key
-        if not api_key:
-            api_key = os.getenv("ANTHROPIC_API_KEY")
-    except ImportError:
-        model = "claude-4-sonnet-latest"
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-
-    if "claude" not in model:
-        raise ValueError("Model must be a Claude model.")
-
-    if not api_key:
-        raise ValueError("Set your api_key explicitly.")
-
-    client = anthropic.Anthropic(api_key=api_key)
-    tool_def = {
-        "type": "web_search_20250305",
-        "name": "web_search",
-        "max_uses": max_searches,
-    }
-
-    delay = random.randint(1, 10)
-
-    for attempt in range(1, max_retries + 1):
+    # Check for required API keys - prefer Serper/Jina as Claude API is not available
+    serper_key = os.getenv("SERPER_API_KEY")
+    jina_key = os.getenv("JINA_API_KEY")
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    
+    # If Serper is available, use the alternative implementation
+    if serper_key:
+        return advanced_web_search_serper(query, max_results=max_searches * 3)
+    
+    # Fallback to Claude if available
+    if anthropic_key:
+        import anthropic
+        
         try:
-            response = client.messages.create(
-                model=model,
-                max_tokens=4096,
-                messages=[{"role": "user", "content": query}],
-                tools=[tool_def],
-            )
+            from biomni.config import default_config
+            model = default_config.llm
+            api_key = default_config.api_key
+            if not api_key:
+                api_key = anthropic_key
+        except ImportError:
+            model = "claude-4-sonnet-latest"
+            api_key = anthropic_key
 
-            paragraphs, citations = [], []
-            response.content = response.content
-            formatted_response = ""
-            for blk in response.content:
-                if blk.type == "text":
-                    paragraphs.append(blk.text)
-                    formatted_response += blk.text
+        if "claude" not in model:
+            model = "claude-4-sonnet-latest"
 
-                    if blk.citations:
-                        for cite in blk.citations:
-                            citations.append({"url": cite.url, "title": cite.title, "cited_text": cite.cited_text})
-                            formatted_response += f"(Citation: {cite.title} - {cite.url})"
-            return formatted_response
+        client = anthropic.Anthropic(api_key=api_key)
+        tool_def = {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": max_searches,
+        }
 
-        except Exception as e:
-            if attempt < max_retries:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            print(f"Error performing web search after {max_retries} attempts: {str(e)}")
-            return f"Error performing web search after {max_retries} attempts: {str(e)}"
+        delay = random.randint(1, 10)
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.messages.create(
+                    model=model,
+                    max_tokens=4096,
+                    messages=[{"role": "user", "content": query}],
+                    tools=[tool_def],
+                )
+
+                paragraphs, citations = [], []
+                response.content = response.content
+                formatted_response = ""
+                for blk in response.content:
+                    if blk.type == "text":
+                        paragraphs.append(blk.text)
+                        formatted_response += blk.text
+
+                        if blk.citations:
+                            for cite in blk.citations:
+                                citations.append({"url": cite.url, "title": cite.title, "cited_text": cite.cited_text})
+                                formatted_response += f"(Citation: {cite.title} - {cite.url})"
+                return formatted_response
+
+            except Exception as e:
+                if attempt < max_retries:
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
+                print(f"Error performing web search after {max_retries} attempts: {str(e)}")
+                return f"Error performing web search after {max_retries} attempts: {str(e)}"
+    
+    # No API keys available
+    return "Error: Web search unavailable. Please set SERPER_API_KEY or ANTHROPIC_API_KEY environment variable."
+
+
+def advanced_web_search_serper(
+    query: str,
+    max_results: int = 5,
+) -> str:
+    """
+    Perform web search using Serper API and optionally fetch page content with Jina.
+    
+    Parameters
+    ----------
+    query : str
+        The search query.
+    max_results : int, optional
+        Maximum number of search results to return.
+    
+    Returns
+    -------
+    str
+        Formatted search results with citations.
+    """
+    serper_key = os.getenv("SERPER_API_KEY")
+    jina_key = os.getenv("JINA_API_KEY")
+    
+    if not serper_key:
+        return "Error: SERPER_API_KEY not configured."
+    
+    # Perform Google search via Serper
+    try:
+        headers = {
+            "X-API-KEY": serper_key,
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "q": query,
+            "num": max_results
+        }
+        
+        response = requests.post(
+            "https://google.serper.dev/search",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        results = []
+        organic = data.get("organic", [])
+        
+        for item in organic[:max_results]:
+            title = item.get("title", "")
+            link = item.get("link", "")
+            snippet = item.get("snippet", "")
+            
+            result_text = f"**{title}**\n{snippet}\nSource: {link}"
+            
+            # Optionally fetch full content via Jina Reader
+            if jina_key and link:
+                try:
+                    jina_url = f"https://r.jina.ai/{link}"
+                    jina_headers = {"Authorization": f"Bearer {jina_key}"}
+                    jina_response = requests.get(jina_url, headers=jina_headers, timeout=20)
+                    if jina_response.ok:
+                        content = jina_response.text[:2000]  # Limit content length
+                        result_text += f"\n\nContent excerpt:\n{content}"
+                except Exception as e:
+                    pass  # Silently skip if Jina fails
+            
+            results.append(result_text)
+        
+        formatted = f"**Web Search Results for: {query}**\n\n"
+        formatted += "\n\n---\n\n".join(results)
+        
+        if not results:
+            formatted += "No results found."
+        
+        return formatted
+        
+    except Exception as e:
+        return f"Error performing web search: {str(e)}"
 
 
 def extract_url_content(url: str) -> str:
