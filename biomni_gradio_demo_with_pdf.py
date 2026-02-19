@@ -366,16 +366,16 @@ def main():
                 for s in agent.app.stream(inputs, stream_mode="values", config=config):
                     # Check if stop requested
                     if stop_requested[0]:
-                    inner_history.append(
-                        gr.ChatMessage(
-                            role="assistant",
-                            content="⚠️ Execution stopped by user",
-                            metadata={"title": "🛑 Stopped"}
+                        inner_history.append(
+                            gr.ChatMessage(
+                                role="assistant",
+                                content="⚠️ Execution stopped by user",
+                                metadata={"title": "🛑 Stopped"}
+                            )
                         )
-                    )
-                    main_history.append(
-                        gr.ChatMessage(
-                            role="assistant",
+                        main_history.append(
+                            gr.ChatMessage(
+                                role="assistant",
                             content="Execution stopped by user",
                             metadata={"title": "🛑 Stopped"}
                         )
