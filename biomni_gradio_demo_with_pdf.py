@@ -162,18 +162,19 @@ def main():
         def extract_plan_from_message(message_content: str) -> Optional[str]:
             """Extract checklist plan from agent message.
             
-            Looks for numbered checklist items with checkbox format:
-            ☐ Step description
-            ☑ Completed step
+            Agent uses format:
+            1. [ ] First step
+            2. [✓] Completed step  
+            3. [✗] Failed step
             
             Returns tuple: (plan_text, total_steps)
             """
             if not message_content:
                 return None, 0
             
-            # Pattern to match checklist items (both checked and unchecked)
-            # Matches lines starting with ☐ or ☑ followed by text
-            checklist_pattern = r'^[☐☑]\s+.+$'
+            # Pattern to match numbered checklist items with [ ], [✓], or [✗]
+            # Matches: "1. [ ] Step" or "2. [✓] Step" or "3. [✗] Step"
+            checklist_pattern = r'^\d+\.\s*\[[ ✓✗xX]\]\s+.+$'
             
             lines = message_content.split('\n')
             plan_lines = []
