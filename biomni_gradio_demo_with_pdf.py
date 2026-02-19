@@ -155,10 +155,10 @@ def main():
             ☐ Step description
             ☑ Completed step
             
-            Returns the extracted plan text or None if no plan found.
+            Returns tuple: (plan_text, total_steps)
             """
             if not message_content:
-                return None
+                return None, 0
             
             # Pattern to match checklist items (both checked and unchecked)
             # Matches lines starting with ☐ or ☑ followed by text
@@ -166,33 +166,26 @@ def main():
             
             lines = message_content.split('\n')
             plan_lines = []
-            in_plan = False
             
             for line in lines:
                 # Check if line matches checklist pattern
                 if re.match(checklist_pattern, line.strip()):
                     plan_lines.append(line.strip())
-                    in_plan = True
-                elif in_plan and line.strip() and not line.strip().startswith(('**', '#', '```')):
-                    # Continue collecting lines that are part of the plan
-                    # Stop at markdown headers, code blocks, or empty lines
-                    continue
-                elif in_plan and not line.strip():
-                    # Empty line might end the plan section
-                    pass
             
             if plan_lines:
                 plan_text = '\n'.join(plan_lines)
-                # Count total steps
                 total_steps = len(plan_lines)
                 return plan_text, total_steps
             
             return None, 0
         
-        def update_plan_in_hitl_state(message_content: str):
-            """Check message for plan and update HITL state if found."""
+        def update_plan_in_hitl_state(message_content: str) -> dict:
+            """Check message for plan and update HITL state if found.
+            
+            Returns dict with UI updates if plan detected, else None.
+            """
             if hitl_state.mode != "hitl":
-                return  # Only track plans in HITL mode
+                return None  # Only track plans in HITL mode
             
             plan_text, total_steps = extract_plan_from_message(message_content)
             if plan_text and not hitl_state.current_plan:
@@ -201,6 +194,15 @@ def main():
                 hitl_state.total_steps = total_steps
                 hitl_state.approval_pending = True
                 print(f"📋 Plan detected ({total_steps} steps) - approval required in HITL mode")
+                
+                # Return UI updates to show approval section
+                return {
+                    "plan_display": plan_text,
+                    "plan_editor": plan_text,  # Pre-populate editor
+                    "accordion_visible": True
+                }
+            
+            return None
 
         
         def generate_pdf_report():
@@ -561,17 +563,36 @@ def main():
             """Approve the plan and continue execution"""
             if hitl_state.approval_pending:
                 hitl_state.resume_execution()
-                # Send continuation message to agent
-                continuation_prompt = {"text": "I approve the plan. Please proceed with execution."}
-                # This will trigger generate_response which will continue
-                return continuation_prompt
+                return "✅ Plan approved. Continuing execution..."
+            return "No plan pending approval."
+        
+        def edit_and_replan(edited_plan):
+            """User edited the plan and wants LLM to review/revise it"""
+            if edited_plan and edited_plan.strip():
+                hitl_state.edited_plan = edited_plan
+                hitl_state.resume_execution()
+                # Create a new message asking agent to review the edited plan
+                return {
+                    "text": f"I've reviewed your plan and made some edits. Please review my changes and revise if needed:\n\n{edited_plan}\n\nPlease analyze if this revised plan makes sense and proceed with execution (or suggest further improvements)."
+                }
+            return None
+        
+        def edit_and_execute(edited_plan):
+            """User edited the plan and wants to execute as-is without LLM review"""
+            if edited_plan and edited_plan.strip():
+                hitl_state.edited_plan = edited_plan
+                hitl_state.resume_execution()
+                # Create a new message telling agent to execute the edited plan
+                return {
+                    "text": f"I've modified the plan. Please execute this revised plan:\n\n{edited_plan}"
+                }
             return None
         
         def reject_plan():
             """Reject the plan and stop execution"""
             hitl_state.reset()
             stop_requested[0] = True
-            return gr.Textbox(value="Plan rejected. Execution stopped.", visible=True)
+            return "❌ Plan rejected. Execution stopped."
 
         
         # Create Gradio interface
@@ -609,17 +630,35 @@ def main():
             )
             
             # Plan approval section (hidden by default)
-            with gr.Accordion("📋 Plan Approval Required", open=True, visible=False) as approval_accordion:
-                gr.Markdown("**Review the generated plan before execution:**")
-                plan_display = gr.Textbox(
-                    label="Generated Plan",
+            with gr.Accordion("📋 Plan Review & Editing", open=True, visible=False) as approval_accordion:
+                gr.Markdown("**Review and optionally edit the plan before execution:**")
+                
+                # Original plan display (read-only)
+                with gr.Accordion("Original Plan", open=False):
+                    plan_display = gr.Textbox(
+                        label="Generated Plan (Read-Only)",
+                        lines=8,
+                        interactive=False,
+                        visible=True
+                    )
+                
+                # Editable plan
+                plan_editor = gr.Textbox(
+                    label="Edit Plan (Optional)",
                     lines=10,
-                    interactive=False,
+                    interactive=True,
+                    placeholder="Edit the plan here if you want to make changes...",
                     visible=True
                 )
+                
+                gr.Markdown("**Choose an action:**")
                 with gr.Row():
                     approve_btn = gr.Button("✅ Approve & Execute", variant="primary", scale=2)
+                    edit_replan_btn = gr.Button("✏️ Edit & Re-plan", variant="secondary", scale=2)
+                with gr.Row():
+                    edit_execute_btn = gr.Button("⚡ Edit & Execute As-Is", variant="secondary", scale=2)
                     reject_btn = gr.Button("❌ Reject & Stop", variant="stop", scale=1)
+                
                 approval_status = gr.Textbox(label="Status", visible=False, interactive=False)
             
             with gr.Row():
@@ -647,11 +686,30 @@ def main():
                 outputs=[status_text]
             )
             
-            # Bind approval buttons (for future use when blocking approval is implemented)
+            # Bind approval buttons
             approve_btn.click(
                 approve_plan,
                 outputs=[approval_status]
             )
+            
+            edit_replan_btn.click(
+                edit_and_replan,
+                inputs=[plan_editor],
+                outputs=[prompt_input]
+            ).then(
+                lambda: gr.Accordion(visible=False), 
+                outputs=[approval_accordion]
+            )
+            
+            edit_execute_btn.click(
+                edit_and_execute,
+                inputs=[plan_editor],
+                outputs=[prompt_input]
+            ).then(
+                lambda: gr.Accordion(visible=False),
+                outputs=[approval_accordion]
+            )
+            
             reject_btn.click(
                 reject_plan,
                 outputs=[approval_status]
