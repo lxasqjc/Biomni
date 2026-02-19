@@ -60,6 +60,11 @@ class HITLState:
     total_steps: int = 0
     batch_approve_remaining: bool = False  # If true, auto-approve all remaining steps
     
+    # New fields for blocking approval
+    waiting_for_approval: bool = False
+    approval_response: Optional[str] = None  # "approved", "edited", "rejected"
+    continuation_prompt: Optional[str] = None  # For edited plans
+    
     def reset(self):
         """Reset state for new query (keeps mode setting)"""
         self.approval_pending = False
@@ -70,6 +75,9 @@ class HITLState:
         self.current_step_index = 0
         self.total_steps = 0
         self.batch_approve_remaining = False
+        self.waiting_for_approval = False
+        self.approval_response = None
+        self.continuation_prompt = None
     
     def is_step_approved(self, step_index: int) -> bool:
         """Check if a specific step is approved"""
@@ -93,11 +101,13 @@ class HITLState:
         """Pause execution and wait for user approval."""
         self.paused = True
         self.approval_pending = True
+        self.waiting_for_approval = True
     
     def resume_execution(self):
         """Resume execution after approval."""
         self.paused = False
         self.approval_pending = False
+        self.waiting_for_approval = False
     
     def should_pause_for_plan_approval(self) -> bool:
         """Check if should pause for initial plan approval."""
@@ -105,7 +115,8 @@ class HITLState:
             self.mode == "hitl" and 
             self.current_plan is not None and 
             not self.paused and 
-            self.approval_pending
+            self.approval_pending and
+            not self.waiting_for_approval  # Don't trigger multiple times
         )
 
 def main():
@@ -195,14 +206,10 @@ def main():
                 hitl_state.approval_pending = True
                 print(f"📋 Plan detected ({total_steps} steps) - approval required in HITL mode")
                 
-                # Return UI updates to show approval section
-                return {
-                    "plan_display": plan_text,
-                    "plan_editor": plan_text,  # Pre-populate editor
-                    "accordion_visible": True
-                }
+                # Return indication that plan was found
+                return True
             
-            return None
+            return False
 
         
         def generate_pdf_report():
@@ -366,24 +373,33 @@ def main():
                 
                 # Check if paused for approval (HITL mode)
                 if hitl_state.should_pause_for_plan_approval():
-                    # In HITL mode, show plan in chat and inform user
-                    # Note: True blocking approval requires architectural changes
-                    # For now, we log the plan and auto-approve, but UI is in place for future enhancement
-                    print(f"⏸️ Plan detected in HITL mode - plan shown to user")
+                    # ACTUALLY PAUSE - stop streaming and wait for user
+                    hitl_state.pause_for_approval()
+                    print(f"⏸️ PAUSED for plan approval in HITL mode")
                     
-                    # Add informational message
+                    # Show plan in main chat
                     main_history.append(
                         gr.ChatMessage(
                             role="assistant",
-                            content=f"📋 **Plan Generated ({hitl_state.total_steps} steps)**\n\n{hitl_state.current_plan}\n\n_HITL mode active - plan review UI coming in next phase_",
-                            metadata={"title": "📋 Plan"}
+                            content=f"📋 **Plan Generated ({hitl_state.total_steps} steps)**\n\nPlease review and approve:\n\n{hitl_state.current_plan}",
+                            metadata={"title": "⏸️ Approval Required"}
                         )
                     )
+                    
+                    # Add pause message to executor
+                    inner_history.append(
+                        gr.ChatMessage(
+                            role="assistant",
+                            content="⏸️ **Execution Paused** - Waiting for user approval...",
+                            metadata={"title": "🤝 HITL Mode"}
+                        )
+                    )
+                    
                     yield inner_history, main_history
                     
-                    # Temporarily auto-approve to maintain execution flow
-                    # TODO: Implement true blocking approval in Phase 2 Task 2.2 continuation
-                    hitl_state.resume_execution()
+                    # STOP STREAMING - wait for user button click
+                    # The approval buttons will trigger continuation
+                    return
 
 
                 
@@ -576,32 +592,35 @@ def main():
         
         def approve_plan():
             """Approve the plan and continue execution"""
-            if hitl_state.approval_pending:
+            if hitl_state.waiting_for_approval:
+                hitl_state.approval_response = "approved"
                 hitl_state.resume_execution()
-                return "✅ Plan approved. Continuing execution..."
+                hitl_state.continuation_prompt = "I approve the plan. Please proceed with execution."
+                print("✅ Plan approved - continuing execution")
+                return "✅ Plan approved. Continuing..."
             return "No plan pending approval."
         
         def edit_and_replan(edited_plan):
             """User edited the plan and wants LLM to review/revise it"""
             if edited_plan and edited_plan.strip():
                 hitl_state.edited_plan = edited_plan
+                hitl_state.approval_response = "edited_replan"
                 hitl_state.resume_execution()
-                # Create a new message asking agent to review the edited plan
-                return {
-                    "text": f"I've reviewed your plan and made some edits. Please review my changes and revise if needed:\n\n{edited_plan}\n\nPlease analyze if this revised plan makes sense and proceed with execution (or suggest further improvements)."
-                }
-            return None
+                hitl_state.continuation_prompt = f"I've reviewed your plan and made some edits. Please review my changes and revise if needed:\n\n{edited_plan}\n\nPlease analyze if this revised plan makes sense and proceed with execution (or suggest further improvements)."
+                print("✏️ Plan edited - requesting re-plan")
+                return "✏️ Plan edited. Requesting LLM review..."
+            return "No edits provided."
         
         def edit_and_execute(edited_plan):
             """User edited the plan and wants to execute as-is without LLM review"""
             if edited_plan and edited_plan.strip():
                 hitl_state.edited_plan = edited_plan
+                hitl_state.approval_response = "edited_execute"
                 hitl_state.resume_execution()
-                # Create a new message telling agent to execute the edited plan
-                return {
-                    "text": f"I've modified the plan. Please execute this revised plan:\n\n{edited_plan}"
-                }
-            return None
+                hitl_state.continuation_prompt = f"I've modified the plan. Please execute this revised plan:\n\n{edited_plan}"
+                print("⚡ Plan edited - executing directly")
+                return "⚡ Executing edited plan..."
+            return "No edits provided."
         
         def reject_plan():
             """Reject the plan and stop execution"""
@@ -743,28 +762,54 @@ def main():
                 outputs=[status_text]
             )
             
-            # Bind approval buttons
+            # Bind approval buttons with continuation logic
+            def approve_and_continue():
+                status = approve_plan()
+                if hitl_state.continuation_prompt:
+                    # Trigger continuation by submitting the prompt
+                    return status, gr.Accordion(visible=False), {"text": hitl_state.continuation_prompt}
+                return status, gr.Accordion(visible=True), None
+            
             approve_btn.click(
-                approve_plan,
-                outputs=[approval_status]
+                approve_and_continue,
+                outputs=[approval_status, approval_accordion, prompt_input]
+            ).then(
+                # Auto-submit the continuation prompt
+                generate_response,
+                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
+                outputs=[innerloop_chatbot, main_chatbot]
             )
+            
+            def edit_replan_and_continue(edited_plan):
+                status = edit_and_replan(edited_plan)
+                if hitl_state.continuation_prompt:
+                    return status, gr.Accordion(visible=False), {"text": hitl_state.continuation_prompt}
+                return status, gr.Accordion(visible=True), None
             
             edit_replan_btn.click(
-                edit_and_replan,
+                edit_replan_and_continue,
                 inputs=[plan_editor],
-                outputs=[prompt_input]
+                outputs=[approval_status, approval_accordion, prompt_input]
             ).then(
-                lambda: gr.Accordion(visible=False), 
-                outputs=[approval_accordion]
+                generate_response,
+                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
+                outputs=[innerloop_chatbot, main_chatbot]
             )
             
+            def edit_execute_and_continue(edited_plan):
+                status = edit_and_execute(edited_plan)
+                if hitl_state.continuation_prompt:
+                    return status, gr.Accordion(visible=False), {"text": hitl_state.continuation_prompt}
+                return status, gr.Accordion(visible=True), None
+            
             edit_execute_btn.click(
-                edit_and_execute,
+                edit_execute_and_continue,
                 inputs=[plan_editor],
-                outputs=[prompt_input]
+                outputs=[approval_status, approval_accordion, prompt_input]
             ).then(
-                lambda: gr.Accordion(visible=False),
-                outputs=[approval_accordion]
+                generate_response,
+                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
+                outputs=[innerloop_chatbot, main_chatbot]
             )
             
             reject_btn.click(
