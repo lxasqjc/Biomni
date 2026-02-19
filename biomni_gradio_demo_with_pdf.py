@@ -437,6 +437,21 @@ def main():
                     # Check for execute tag
                     execute_match = re.search(r"<execute>(.*?)</execute>", message.content, re.DOTALL)
                     if execute_match:
+                        # Track step execution in HITL mode
+                        if hitl_state.mode == "hitl":
+                            hitl_state.current_step_index += 1
+                            step_info = f"Step {hitl_state.current_step_index}/{hitl_state.total_steps}" if hitl_state.total_steps > 0 else f"Step {hitl_state.current_step_index}"
+                            print(f"🔧 Executing {step_info} in HITL mode")
+                            
+                            # Add info message to inner history
+                            inner_history.append(
+                                gr.ChatMessage(
+                                    role="assistant",
+                                    content=f"ℹ️ **{step_info}** - Executing in HITL mode",
+                                    metadata={"title": "🤝 HITL"}
+                                )
+                            )
+                        
                         code = execute_match.group(1).strip()
                         language = "python"
                         if code.strip().startswith("#!R"):
@@ -593,6 +608,30 @@ def main():
             hitl_state.reset()
             stop_requested[0] = True
             return "❌ Plan rejected. Execution stopped."
+        
+        def approve_step():
+            """Approve current execution step"""
+            if hitl_state.current_step_index > 0:
+                hitl_state.approve_step(hitl_state.current_step_index)
+                return f"✅ Step {hitl_state.current_step_index} approved."
+            return "No step to approve."
+        
+        def approve_all_steps():
+            """Approve all remaining steps"""
+            hitl_state.approve_all_remaining()
+            return "✅ All remaining steps approved."
+        
+        def skip_step():
+            """Skip current step"""
+            if hitl_state.current_step_index > 0:
+                return f"⏭️ Step {hitl_state.current_step_index} skipped."
+            return "No step to skip."
+        
+        def stop_step_execution():
+            """Stop execution at current step"""
+            stop_requested[0] = True
+            return "🛑 Execution stopped."
+
 
         
         # Create Gradio interface
@@ -661,6 +700,24 @@ def main():
                 
                 approval_status = gr.Textbox(label="Status", visible=False, interactive=False)
             
+            # Step approval section (for future step-by-step control)
+            with gr.Accordion("🔧 Step-by-Step Approval", open=False, visible=False) as step_approval_accordion:
+                gr.Markdown("**Review each execution step before proceeding:**")
+                current_step_display = gr.Textbox(
+                    label="Current Step",
+                    lines=3,
+                    interactive=False,
+                    visible=True
+                )
+                with gr.Row():
+                    approve_step_btn = gr.Button("✅ Approve This Step", variant="primary", scale=2)
+                    approve_all_btn = gr.Button("⏩ Approve All Remaining", variant="secondary", scale=2)
+                with gr.Row():
+                    skip_step_btn = gr.Button("⏭️ Skip This Step", variant="secondary", scale=1)
+                    stop_step_btn = gr.Button("🛑 Stop Execution", variant="stop", scale=1)
+                step_status = gr.Textbox(label="Status", visible=False, interactive=False)
+
+            
             with gr.Row():
                 prompt_input = gr.MultimodalTextbox(
                     interactive=True,
@@ -714,6 +771,28 @@ def main():
                 reject_plan,
                 outputs=[approval_status]
             )
+            
+            # Bind step approval buttons (for future step-by-step control)
+            approve_step_btn.click(
+                approve_step,
+                outputs=[step_status]
+            )
+            
+            approve_all_btn.click(
+                approve_all_steps,
+                outputs=[step_status]
+            )
+            
+            skip_step_btn.click(
+                skip_step,
+                outputs=[step_status]
+            )
+            
+            stop_step_btn.click(
+                stop_step_execution,
+                outputs=[step_status]
+            )
+
 
         
         # Launch
