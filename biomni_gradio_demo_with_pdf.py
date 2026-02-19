@@ -191,13 +191,13 @@ def main():
             
             return None, 0
         
-        def update_plan_in_hitl_state(message_content: str) -> dict:
+        def update_plan_in_hitl_state(message_content: str):
             """Check message for plan and update HITL state if found.
             
-            Returns dict with UI updates if plan detected, else None.
+            Returns True if plan was found, False otherwise.
             """
             if hitl_state.mode != "hitl":
-                return None  # Only track plans in HITL mode
+                return False  # Only track plans in HITL mode
             
             plan_text, total_steps = extract_plan_from_message(message_content)
             if plan_text and not hitl_state.current_plan:
@@ -206,8 +206,6 @@ def main():
                 hitl_state.total_steps = total_steps
                 hitl_state.approval_pending = True
                 print(f"📋 Plan detected ({total_steps} steps) - approval required in HITL mode")
-                
-                # Return indication that plan was found
                 return True
             
             return False
@@ -317,6 +315,15 @@ def main():
             
             # Reset stop flag at start of new generation
             stop_requested[0] = False
+            
+            # Update UI status messages
+            if hitl_state.mode == "hitl":
+                # Initialize status messages for HITL mode
+                initial_plan_status = "🤝 HITL mode active - waiting for plan to be generated..."
+                initial_step_status = "🤝 HITL mode active - will pause before each execution step."
+            else:
+                initial_plan_status = "🚀 YOLO mode - automatic execution without approval"
+                initial_step_status = "🚀 YOLO mode - automatic execution without approval"
             
             text_input = prompt_input.get("text", "")
             files = prompt_input.get("files", [])
@@ -721,9 +728,10 @@ def main():
                 info="YOLO: automatic execution | HITL: review plans before execution"
             )
             
-            # Plan approval section (hidden by default)
-            with gr.Accordion("📋 Plan Review & Editing", open=True, visible=False) as approval_accordion:
+            # Plan approval section - Show in HITL mode
+            with gr.Accordion("📋 Plan Review & Editing", open=True, visible=True) as approval_accordion:
                 gr.Markdown("**Review and optionally edit the plan before execution:**")
+                gr.Markdown("*This section will activate when a plan is generated in HITL mode.*")
                 
                 # Original plan display (read-only)
                 with gr.Accordion("Original Plan", open=False):
@@ -731,7 +739,8 @@ def main():
                         label="Generated Plan (Read-Only)",
                         lines=8,
                         interactive=False,
-                        visible=True
+                        visible=True,
+                        value="No plan generated yet..."
                     )
                 
                 # Editable plan
@@ -739,7 +748,7 @@ def main():
                     label="Edit Plan (Optional)",
                     lines=10,
                     interactive=True,
-                    placeholder="Edit the plan here if you want to make changes...",
+                    placeholder="Plan will appear here when generated. You can edit it before execution.",
                     visible=True
                 )
                 
@@ -751,16 +760,18 @@ def main():
                     edit_execute_btn = gr.Button("⚡ Edit & Execute As-Is", variant="secondary", scale=2)
                     reject_btn = gr.Button("❌ Reject & Stop", variant="stop", scale=1)
                 
-                approval_status = gr.Textbox(label="Status", visible=False, interactive=False)
+                approval_status = gr.Textbox(label="Status", visible=True, interactive=False, value="Waiting for plan...")
             
-            # Step approval section (for future step-by-step control)
-            with gr.Accordion("🔧 Step-by-Step Approval", open=False, visible=False) as step_approval_accordion:
+            # Step approval section - Show in HITL mode
+            with gr.Accordion("🔧 Step-by-Step Approval", open=True, visible=True) as step_approval_accordion:
                 gr.Markdown("**Review each execution step before proceeding:**")
+                gr.Markdown("*This section will activate when code is about to be executed in HITL mode.*")
                 current_step_display = gr.Textbox(
                     label="Current Step",
                     lines=3,
                     interactive=False,
-                    visible=True
+                    visible=True,
+                    value="No step pending approval..."
                 )
                 with gr.Row():
                     approve_step_btn = gr.Button("✅ Approve This Step", variant="primary", scale=2)
@@ -768,7 +779,7 @@ def main():
                 with gr.Row():
                     skip_step_btn = gr.Button("⏭️ Skip This Step", variant="secondary", scale=1)
                     stop_step_btn = gr.Button("🛑 Stop Execution", variant="stop", scale=1)
-                step_status = gr.Textbox(label="Status", visible=False, interactive=False)
+                step_status = gr.Textbox(label="Status", visible=True, interactive=False, value="Waiting for execution step...")
 
             
             with gr.Row():
