@@ -88,6 +88,25 @@ class HITLState:
     def get_active_plan(self) -> Optional[str]:
         """Get the currently active plan (edited if available, otherwise original)"""
         return self.edited_plan if self.edited_plan else self.current_plan
+    
+    def pause_for_approval(self):
+        """Pause execution and wait for user approval."""
+        self.paused = True
+        self.approval_pending = True
+    
+    def resume_execution(self):
+        """Resume execution after approval."""
+        self.paused = False
+        self.approval_pending = False
+    
+    def should_pause_for_plan_approval(self) -> bool:
+        """Check if should pause for initial plan approval."""
+        return (
+            self.mode == "hitl" and 
+            self.current_plan is not None and 
+            not self.paused and 
+            self.approval_pending
+        )
 
 def main():
     # Ensure output directories exist
@@ -338,6 +357,14 @@ def main():
                     )
                     yield inner_history, main_history
                     return
+                
+                # Check if paused for approval (HITL mode)
+                if hitl_state.should_pause_for_plan_approval():
+                    # TODO Phase 2: Add approval UI here
+                    # For now, just log and continue (will be implemented in Phase 2)
+                    print(f"⏸️ Would pause here for plan approval (HITL mode) - Phase 2 TODO")
+                    # Temporarily auto-approve to maintain current behavior
+                    hitl_state.resume_execution()
                 
                 t_step = time() - t
                 message = s["messages"][-1]
