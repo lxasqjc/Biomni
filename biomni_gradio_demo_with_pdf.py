@@ -358,10 +358,14 @@ def main():
             solution_found = False
             code_execution_messages = []
             
-            # Stream agent responses
-            for s in agent.app.stream(inputs, stream_mode="values", config=config):
-                # Check if stop requested
-                if stop_requested[0]:
+            # Stream agent responses - may need to restart after HITL approval
+            while True:  # Outer loop to allow stream restart
+                stream_ended_naturally = True
+                
+                # Stream agent responses
+                for s in agent.app.stream(inputs, stream_mode="values", config=config):
+                    # Check if stop requested
+                    if stop_requested[0]:
                     inner_history.append(
                         gr.ChatMessage(
                             role="assistant",
@@ -433,26 +437,47 @@ def main():
                         )
                         yield inner_history, main_history
                         return
-                    elif hitl_state.approval_response in ["edited_replan", "edited_execute"]:
-                        # User edited - send the edited plan back to agent
-                        # This happens in the button handler which restarts with new prompt
-                        # For now, just continue (edit handlers restart generate_response)
-                        return
-                    # else: approval_response == "approved" - just continue the stream
                     
-                    # Show approval confirmation
-                    main_history.append(
-                        gr.ChatMessage(
-                            role="assistant",
-                            content="✅ Plan approved. Continuing execution...",
-                            metadata={"title": "✅ Approved"}
+                    # For approved or edited plans, we need to continue the agent
+                    # The agent has generated a plan and is waiting. We need to tell it to proceed.
+                    
+                    if hitl_state.approval_response in ["edited_replan", "edited_execute"]:
+                        # User edited plan - send back to agent
+                        if hitl_state.approval_response == "edited_replan":
+                            continuation_msg = f"I've reviewed your plan and made some edits. Please review my changes and revise if needed:\n\n{hitl_state.edited_plan}\n\nAfter reviewing, please proceed with execution."
+                        else:  # edited_execute
+                            continuation_msg = f"I've modified the plan. Please execute this plan:\n\n{hitl_state.edited_plan}\n\nProceed with execution."
+                        
+                        main_history.append(
+                            gr.ChatMessage(
+                                role="assistant",
+                                content=f"✏️ Plan edited. Restarting with modified plan...",
+                                metadata={"title": "✏️ Modified"}
+                            )
                         )
-                    )
+                    else:  # approved
+                        # Agent's plan is approved, tell it to proceed
+                        continuation_msg = "Approved. Please proceed with executing the plan."
+                        
+                        main_history.append(
+                            gr.ChatMessage(
+                                role="assistant",
+                                content="✅ Plan approved. Starting execution...",
+                                metadata={"title": "✅ Approved"}
+                            )
+                        )
+                    
                     yield inner_history, main_history
                     
-                    # STOP STREAMING - wait for user button click
-                    # The approval buttons will trigger continuation
-                    return
+                    # Add continuation message to agent and restart stream
+                    agent_messages.append(HumanMessage(content=continuation_msg))
+                    inputs = {"messages": agent_messages, "next_step": None}
+                    
+                    print(f"🔄 Restarting agent stream with continuation message...")
+                    
+                    # Continue with a NEW stream that includes the continuation
+                    # Don't return - break out of current stream and restart below
+                    break  # Exit current stream loop
                 
                 if message.content == text_input:
                     t = time()
@@ -648,6 +673,16 @@ def main():
                                 yield inner_history, main_history
                 
                 t = time()
+                
+                # Check if we broke out of the loop for HITL continuation
+                if hitl_state.mode == "hitl" and hitl_state.approval_response in ["approved", "edited_replan", "edited_execute"]:
+                    # Stream was interrupted for approval, now restart with continuation
+                    print(f"🔄 Stream restarting after approval...")
+                    hitl_state.approval_response = None  # Reset for next pause
+                    continue  # Go back to while True loop to restart stream
+                else:
+                    # Stream ended naturally
+                    break  # Exit while True loop
             
             # If no solution found, add final message
             if not solution_found:
