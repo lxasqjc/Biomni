@@ -691,8 +691,6 @@ def main():
             """Stop execution at current step"""
             stop_requested[0] = True
             return "🛑 Execution stopped."
-
-
         
         # Create Gradio interface
         with gr.Blocks(title="Biomni A1 Agent") as demo:
@@ -728,58 +726,50 @@ def main():
                 info="YOLO: automatic execution | HITL: review plans before execution"
             )
             
-            # Plan approval section - Show in HITL mode
-            with gr.Accordion("📋 Plan Review & Editing", open=True, visible=True) as approval_accordion:
-                gr.Markdown("**Review and optionally edit the plan before execution:**")
-                gr.Markdown("*This section will activate when a plan is generated in HITL mode.*")
+            # Integrated approval controls - compact row format
+            with gr.Group():
+                gr.Markdown("### 🤝 HITL Approval Controls")
                 
-                # Original plan display (read-only)
-                with gr.Accordion("Original Plan", open=False):
-                    plan_display = gr.Textbox(
-                        label="Generated Plan (Read-Only)",
-                        lines=8,
-                        interactive=False,
-                        visible=True,
-                        value="No plan generated yet..."
-                    )
-                
-                # Editable plan
-                plan_editor = gr.Textbox(
-                    label="Edit Plan (Optional)",
-                    lines=10,
-                    interactive=True,
-                    placeholder="Plan will appear here when generated. You can edit it before execution.",
-                    visible=True
-                )
-                
-                gr.Markdown("**Choose an action:**")
+                # Plan approval - compact single row
                 with gr.Row():
-                    approve_btn = gr.Button("✅ Approve & Execute", variant="primary", scale=2)
-                    edit_replan_btn = gr.Button("✏️ Edit & Re-plan", variant="secondary", scale=2)
-                with gr.Row():
-                    edit_execute_btn = gr.Button("⚡ Edit & Execute As-Is", variant="secondary", scale=2)
-                    reject_btn = gr.Button("❌ Reject & Stop", variant="stop", scale=1)
+                    with gr.Column(scale=3):
+                        plan_editor = gr.Textbox(
+                            label="📋 Plan (editable in HITL mode)",
+                            lines=4,
+                            interactive=True,
+                            placeholder="Generated plan will appear here when in HITL mode. You can edit it before approving.",
+                            show_label=True
+                        )
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Plan Actions:**")
+                        approve_btn = gr.Button("✅ Approve", variant="primary", size="sm")
+                        edit_replan_btn = gr.Button("✏️ Edit & Re-plan", variant="secondary", size="sm")
+                        edit_execute_btn = gr.Button("⚡ Edit & Execute", variant="secondary", size="sm")
+                        reject_btn = gr.Button("❌ Reject", variant="stop", size="sm")
                 
-                approval_status = gr.Textbox(label="Status", visible=True, interactive=False, value="Waiting for plan...")
+                # Step approval - compact single row
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        approval_status = gr.Textbox(
+                            label="Status",
+                            value="Ready. Select HITL mode and ask a question to start.",
+                            interactive=False,
+                            show_label=True,
+                            lines=2
+                        )
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Step Actions:**")
+                        approve_step_btn = gr.Button("✅ This Step", variant="primary", size="sm")
+                        approve_all_btn = gr.Button("⏩ All Steps", variant="secondary", size="sm")
+                        skip_step_btn = gr.Button("⏭️ Skip", size="sm")
+                        stop_step_btn = gr.Button("🛑 Stop", variant="stop", size="sm")
             
-            # Step approval section - Show in HITL mode
-            with gr.Accordion("🔧 Step-by-Step Approval", open=True, visible=True) as step_approval_accordion:
-                gr.Markdown("**Review each execution step before proceeding:**")
-                gr.Markdown("*This section will activate when code is about to be executed in HITL mode.*")
-                current_step_display = gr.Textbox(
-                    label="Current Step",
-                    lines=3,
-                    interactive=False,
-                    visible=True,
-                    value="No step pending approval..."
-                )
-                with gr.Row():
-                    approve_step_btn = gr.Button("✅ Approve This Step", variant="primary", scale=2)
-                    approve_all_btn = gr.Button("⏩ Approve All Remaining", variant="secondary", scale=2)
-                with gr.Row():
-                    skip_step_btn = gr.Button("⏭️ Skip This Step", variant="secondary", scale=1)
-                    stop_step_btn = gr.Button("🛑 Stop Execution", variant="stop", scale=1)
-                step_status = gr.Textbox(label="Status", visible=True, interactive=False, value="Waiting for execution step...")
+            # Hidden fields for compatibility
+            plan_display = gr.Textbox(visible=False)
+            step_status = gr.Textbox(visible=False)
+            current_step_display = gr.Textbox(visible=False)
+            approval_accordion = gr.Accordion(visible=False)
+            step_approval_accordion = gr.Accordion(visible=False)
 
             
             with gr.Row():
