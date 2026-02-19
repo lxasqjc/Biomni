@@ -15,7 +15,7 @@ from biomni.agent import A1
 from datetime import datetime
 from langchain_core.messages import HumanMessage, AIMessage
 import re
-from time import time
+from time import time, sleep
 from dataclasses import dataclass, field
 from typing import Optional
 
