@@ -129,6 +129,61 @@ def main():
         
         SUPPORTED_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf")
         
+        def extract_plan_from_message(message_content: str) -> Optional[str]:
+            """Extract checklist plan from agent message.
+            
+            Looks for numbered checklist items with checkbox format:
+            ☐ Step description
+            ☑ Completed step
+            
+            Returns the extracted plan text or None if no plan found.
+            """
+            if not message_content:
+                return None
+            
+            # Pattern to match checklist items (both checked and unchecked)
+            # Matches lines starting with ☐ or ☑ followed by text
+            checklist_pattern = r'^[☐☑]\s+.+$'
+            
+            lines = message_content.split('\n')
+            plan_lines = []
+            in_plan = False
+            
+            for line in lines:
+                # Check if line matches checklist pattern
+                if re.match(checklist_pattern, line.strip()):
+                    plan_lines.append(line.strip())
+                    in_plan = True
+                elif in_plan and line.strip() and not line.strip().startswith(('**', '#', '```')):
+                    # Continue collecting lines that are part of the plan
+                    # Stop at markdown headers, code blocks, or empty lines
+                    continue
+                elif in_plan and not line.strip():
+                    # Empty line might end the plan section
+                    pass
+            
+            if plan_lines:
+                plan_text = '\n'.join(plan_lines)
+                # Count total steps
+                total_steps = len(plan_lines)
+                return plan_text, total_steps
+            
+            return None, 0
+        
+        def update_plan_in_hitl_state(message_content: str):
+            """Check message for plan and update HITL state if found."""
+            if hitl_state.mode != "hitl":
+                return  # Only track plans in HITL mode
+            
+            plan_text, total_steps = extract_plan_from_message(message_content)
+            if plan_text and not hitl_state.current_plan:
+                # First plan detected - store it
+                hitl_state.current_plan = plan_text
+                hitl_state.total_steps = total_steps
+                hitl_state.approval_pending = True
+                print(f"📋 Plan detected ({total_steps} steps) - approval required in HITL mode")
+
+        
         def generate_pdf_report():
             """Generate PDF report and return HTTP link"""
             # Debug: write to file to track if function is called
@@ -286,6 +341,10 @@ def main():
                 
                 t_step = time() - t
                 message = s["messages"][-1]
+                
+                # Extract and track plan if present (HITL mode only)
+                if isinstance(message.content, str):
+                    update_plan_in_hitl_state(message.content)
                 
                 if message.content == text_input:
                     t = time()
