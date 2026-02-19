@@ -385,11 +385,11 @@ def main():
                     hitl_state.pause_for_approval()
                     print(f"⏸️ PAUSED for plan approval in HITL mode")
                     
-                    # Show plan in main chat
+                    # Show plan in main chat with approval needed message
                     main_history.append(
                         gr.ChatMessage(
                             role="assistant",
-                            content=f"📋 **Plan Generated ({hitl_state.total_steps} steps)**\n\nPlease review and approve:\n\n{hitl_state.current_plan}",
+                            content=f"📋 **Plan Generated ({hitl_state.total_steps} steps)**\n\nPlease review the plan in the approval section below and click a button to continue.\n\n**Generated Plan:**\n```\n{hitl_state.current_plan}\n```",
                             metadata={"title": "⏸️ Approval Required"}
                         )
                     )
@@ -398,11 +398,13 @@ def main():
                     inner_history.append(
                         gr.ChatMessage(
                             role="assistant",
-                            content="⏸️ **Execution Paused** - Waiting for user approval...",
+                            content="⏸️ **Execution Paused** - Waiting for user approval...\n\nUse the 'Plan Review & Editing' section to approve or modify the plan.",
                             metadata={"title": "🤝 HITL Mode"}
                         )
                     )
                     
+                    # CRITICAL: Update the UI components to show approval section
+                    # We need to return updates for plan_display, plan_editor, and accordion visibility
                     yield inner_history, main_history
                     
                     # STOP STREAMING - wait for user button click
@@ -452,20 +454,48 @@ def main():
                     # Check for execute tag
                     execute_match = re.search(r"<execute>(.*?)</execute>", message.content, re.DOTALL)
                     if execute_match:
-                        # Track step execution in HITL mode
-                        if hitl_state.mode == "hitl":
+                        # In HITL mode, check if we should pause before executing
+                        if hitl_state.mode == "hitl" and not hitl_state.batch_approve_remaining:
                             hitl_state.current_step_index += 1
+                            
+                            # Check if this step is already approved
+                            if not hitl_state.is_step_approved(hitl_state.current_step_index):
+                                # PAUSE for step approval
+                                code = execute_match.group(1).strip()
+                                step_info = f"Step {hitl_state.current_step_index}/{hitl_state.total_steps}" if hitl_state.total_steps > 0 else f"Step {hitl_state.current_step_index}"
+                                
+                                print(f"⏸️ PAUSED at {step_info} for approval in HITL mode")
+                                
+                                # Show step info in executor
+                                inner_history.append(
+                                    gr.ChatMessage(
+                                        role="assistant",
+                                        content=f"⏸️ **{step_info} - Approval Required**\n\nAbout to execute code. Please approve to continue.",
+                                        metadata={"title": "🤝 HITL Step Approval"}
+                                    )
+                                )
+                                
+                                # Show in main chat
+                                main_history.append(
+                                    gr.ChatMessage(
+                                        role="assistant",
+                                        content=f"⏸️ **{step_info} requires approval**\n\nReview the code in the executor panel and use step approval buttons.",
+                                        metadata={"title": "⏸️ Step Approval"}
+                                    )
+                                )
+                                
+                                yield inner_history, main_history
+                                
+                                # STOP and wait for approval
+                                # User must click approve button to continue
+                                return
+                        
+                        # Track step in HITL mode (for info)
+                        if hitl_state.mode == "hitl":
+                            if hitl_state.current_step_index == 0 or hitl_state.batch_approve_remaining:
+                                hitl_state.current_step_index += 1
                             step_info = f"Step {hitl_state.current_step_index}/{hitl_state.total_steps}" if hitl_state.total_steps > 0 else f"Step {hitl_state.current_step_index}"
                             print(f"🔧 Executing {step_info} in HITL mode")
-                            
-                            # Add info message to inner history
-                            inner_history.append(
-                                gr.ChatMessage(
-                                    role="assistant",
-                                    content=f"ℹ️ **{step_info}** - Executing in HITL mode",
-                                    metadata={"title": "🤝 HITL"}
-                                )
-                            )
                         
                         code = execute_match.group(1).strip()
                         language = "python"
@@ -628,15 +658,20 @@ def main():
             return "❌ Plan rejected. Execution stopped."
         
         def approve_step():
-            """Approve current execution step"""
+            """Approve current execution step and continue"""
             if hitl_state.current_step_index > 0:
                 hitl_state.approve_step(hitl_state.current_step_index)
+                # Set continuation to trigger next execution
+                hitl_state.continuation_prompt = "Approved. Continue with the execution."
+                print(f"✅ Step {hitl_state.current_step_index} approved - continuing")
                 return f"✅ Step {hitl_state.current_step_index} approved."
             return "No step to approve."
         
         def approve_all_steps():
             """Approve all remaining steps"""
             hitl_state.approve_all_remaining()
+            hitl_state.continuation_prompt = "All remaining steps approved. Continue with execution."
+            print("✅ All remaining steps approved - continuing")
             return "✅ All remaining steps approved."
         
         def skip_step():
@@ -816,15 +851,35 @@ def main():
                 outputs=[approval_status]
             )
             
-            # Bind step approval buttons (for future step-by-step control)
+            # Bind step approval buttons with continuation
+            def approve_step_and_continue():
+                status = approve_step()
+                if hitl_state.continuation_prompt:
+                    return status, {"text": hitl_state.continuation_prompt}
+                return status, None
+            
             approve_step_btn.click(
-                approve_step,
-                outputs=[step_status]
+                approve_step_and_continue,
+                outputs=[step_status, prompt_input]
+            ).then(
+                generate_response,
+                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
+                outputs=[innerloop_chatbot, main_chatbot]
             )
             
+            def approve_all_and_continue():
+                status = approve_all_steps()
+                if hitl_state.continuation_prompt:
+                    return status, {"text": hitl_state.continuation_prompt}
+                return status, None
+            
             approve_all_btn.click(
-                approve_all_steps,
-                outputs=[step_status]
+                approve_all_and_continue,
+                outputs=[step_status, prompt_input]
+            ).then(
+                generate_response,
+                inputs=[prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
+                outputs=[innerloop_chatbot, main_chatbot]
             )
             
             skip_step_btn.click(
