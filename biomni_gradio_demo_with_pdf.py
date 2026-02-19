@@ -16,6 +16,8 @@ from datetime import datetime
 from langchain_core.messages import HumanMessage, AIMessage
 import re
 from time import time
+from dataclasses import dataclass, field
+from typing import Optional
 
 # Configuration
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +42,52 @@ GRADIO_PORT = int(os.getenv('GRADIO_PORT', '7861'))
 SERVER_NAME = os.getenv('GRADIO_SERVER_NAME', '0.0.0.0')
 SHARE = os.getenv('GRADIO_SHARE', 'False').lower() == 'true'
 REQUIRE_VERIFICATION = os.getenv('GRADIO_REQUIRE_AUTH', 'False').lower() == 'true'
+
+@dataclass
+class HITLState:
+    """Human-in-the-Loop state management for Gradio UI.
+    
+    Tracks approval state, plan modifications, and execution control
+    without modifying the underlying agent behavior.
+    """
+    mode: str = "yolo"  # "yolo" (default) or "hitl"
+    approval_pending: bool = False
+    current_plan: Optional[str] = None
+    edited_plan: Optional[str] = None
+    step_approvals: dict = field(default_factory=dict)  # {step_index: bool}
+    paused: bool = False
+    current_step_index: int = 0
+    total_steps: int = 0
+    batch_approve_remaining: bool = False  # If true, auto-approve all remaining steps
+    
+    def reset(self):
+        """Reset state for new query (keeps mode setting)"""
+        self.approval_pending = False
+        self.current_plan = None
+        self.edited_plan = None
+        self.step_approvals = {}
+        self.paused = False
+        self.current_step_index = 0
+        self.total_steps = 0
+        self.batch_approve_remaining = False
+    
+    def is_step_approved(self, step_index: int) -> bool:
+        """Check if a specific step is approved"""
+        if self.batch_approve_remaining:
+            return True
+        return self.step_approvals.get(step_index, False)
+    
+    def approve_step(self, step_index: int):
+        """Mark a step as approved"""
+        self.step_approvals[step_index] = True
+    
+    def approve_all_remaining(self):
+        """Approve all remaining steps (batch approval)"""
+        self.batch_approve_remaining = True
+    
+    def get_active_plan(self) -> Optional[str]:
+        """Get the currently active plan (edited if available, otherwise original)"""
+        return self.edited_plan if self.edited_plan else self.current_plan
 
 def main():
     # Ensure output directories exist
@@ -70,6 +118,10 @@ def main():
         agent = A1(**AGENT_CONFIG)
         print(f"✅ Agent initialized successfully!")
         print(f"📁 Session folder: {session_folder}")
+        
+        # Initialize HITL state (UI-layer only, no agent modification)
+        hitl_state = HITLState()
+        print(f"🤝 HITL state initialized (default mode: {hitl_state.mode})")
         
         # Conversation tracking
         main_history_copy = []
