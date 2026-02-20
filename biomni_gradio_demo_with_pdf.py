@@ -376,12 +376,12 @@ def main():
                         main_history.append(
                             gr.ChatMessage(
                                 role="assistant",
-                            content="Execution stopped by user",
-                            metadata={"title": "🛑 Stopped"}
+                                content="Execution stopped by user",
+                                metadata={"title": "🛑 Stopped"}
+                            )
                         )
-                    )
-                    yield inner_history, main_history
-                    return
+                        yield inner_history, main_history
+                        return
                 
                 t_step = time() - t
                 message = s["messages"][-1]
