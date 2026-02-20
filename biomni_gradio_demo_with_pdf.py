@@ -259,9 +259,10 @@ def main():
                 
                 with open(debug_file, 'a') as f:
                     f.write(f"Populated agent.log with {len(agent.log)} messages\n")
-                    # Log first few messages for debugging
+                    # Log first few messages for debugging (now strings, not dicts)
                     for i, msg in enumerate(agent.log[:3]):
-                        f.write(f"  Message {i}: role={msg['role']}, content_len={len(msg['content'])}\n")
+                        msg_preview = msg[:100].replace('\n', ' ') if len(msg) > 100 else msg.replace('\n', ' ')
+                        f.write(f"  Message {i}: {msg_preview}...\n")
                 
                 # Redirect stdout/stderr to capture any errors
                 import sys
