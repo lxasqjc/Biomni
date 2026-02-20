@@ -1,14 +1,17 @@
 #!/bin/bash
 cd /data/jinc/git_chen/Biomni
 
+# IMPORTANT: Clear all proxy variables first, then set fresh
+# The order in NO_PROXY matters - specific hosts FIRST
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY no_proxy NO_PROXY
+
 # Configure proxy settings for vLLM backend access
-export http_proxy=
-export https_proxy="http://emeapzen.astrazeneca.net:9480"
-export HTTP_PROXY=
+# vLLM hostname MUST be first in the list for proper bypass
+export NO_PROXY="vllm.paas-jade.astrazeneca.net,*.astrazeneca.net,10.0.0.0/8,172.29.0.0/8,localhost,127.0.0.1"
+export no_proxy="vllm.paas-jade.astrazeneca.net,*.astrazeneca.net,10.0.0.0/8,172.29.0.0/8,localhost,127.0.0.1"
 export HTTPS_PROXY="http://emeapzen.astrazeneca.net:9480"
-export NO_PROXY="10.0.0.0/8,172.29.0.0/8,astrazeneca.net,*.astrazeneca.net,vllm.paas-jade.astrazeneca.net,localhost,127.0.0.1"
-export no_proxy="10.0.0.0/8,172.29.0.0/8,astrazeneca.net,*.astrazeneca.net,vllm.paas-jade.astrazeneca.net,localhost,127.0.0.1"
-echo "✅ Configured proxy settings"
+export https_proxy="http://emeapzen.astrazeneca.net:9480"
+echo "✅ Configured proxy settings (vLLM hostname first in NO_PROXY)"
 
 # Kill existing server
 EXISTING_PID=$(lsof -i :7861 | grep LISTEN | awk '{print $2}' | head -1)
