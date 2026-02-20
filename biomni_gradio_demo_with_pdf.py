@@ -637,7 +637,7 @@ def main():
                             gr.ChatMessage(
                                 role="assistant",
                                 content=f"##### Observation: \n```\n{observation}\n```",
-                                metadata={"status": "done", "log": "Observation from code execution", "collapsed": True}
+                                metadata={"status": "done", "title": "📊 Output"}
                             )
                         )
                         yield inner_history, main_history
