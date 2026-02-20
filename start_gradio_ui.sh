@@ -1,6 +1,15 @@
 #!/bin/bash
 cd /data/jinc/git_chen/Biomni
 
+# Configure proxy settings for vLLM backend access
+export http_proxy=
+export https_proxy="http://emeapzen.astrazeneca.net:9480"
+export HTTP_PROXY=
+export HTTPS_PROXY="http://emeapzen.astrazeneca.net:9480"
+export NO_PROXY="10.0.0.0/8,172.29.0.0/8,astrazeneca.net,*.astrazeneca.net,vllm.paas-jade.astrazeneca.net,localhost,127.0.0.1"
+export no_proxy="10.0.0.0/8,172.29.0.0/8,astrazeneca.net,*.astrazeneca.net,vllm.paas-jade.astrazeneca.net,localhost,127.0.0.1"
+echo "✅ Configured proxy settings"
+
 # Kill existing server
 EXISTING_PID=$(lsof -i :7861 | grep LISTEN | awk '{print $2}' | head -1)
 if [ ! -z "$EXISTING_PID" ]; then
