@@ -111,13 +111,15 @@ class HITLState:
     
     def should_pause_for_plan_approval(self) -> bool:
         """Check if should pause for initial plan approval."""
-        return (
+        result = (
             self.mode == "hitl" and 
             self.current_plan is not None and 
             not self.paused and 
             self.approval_pending and
             not self.waiting_for_approval  # Don't trigger multiple times
         )
+        print(f"🔍 should_pause_for_plan_approval: mode={self.mode}, plan={self.current_plan is not None}, paused={self.paused}, pending={self.approval_pending}, waiting={self.waiting_for_approval} => {result}")
+        return result
 
 def main():
     # Ensure output directories exist
@@ -196,16 +198,20 @@ def main():
             
             Returns True if plan was found, False otherwise.
             """
+            print(f"🔍 update_plan_in_hitl_state called: mode={hitl_state.mode}, has_plan={hitl_state.current_plan is not None}")
             if hitl_state.mode != "hitl":
+                print("  ⏭️ Not HITL mode - skipping")
                 return False  # Only track plans in HITL mode
             
             plan_text, total_steps = extract_plan_from_message(message_content)
+            print(f"  📋 extract_plan_from_message: found={plan_text is not None}, steps={total_steps}")
             if plan_text and not hitl_state.current_plan:
                 # First plan detected - store it
                 hitl_state.current_plan = plan_text
                 hitl_state.total_steps = total_steps
                 hitl_state.approval_pending = True
                 print(f"📋 Plan detected ({total_steps} steps) - approval required in HITL mode")
+                print(f"  Plan text:\n{plan_text[:200]}...")
                 return True
             
             return False
@@ -237,13 +243,19 @@ def main():
                     f.write(f"PDF path: {pdf_path}\n")
                 
                 # Populate agent.log from main_history_copy for PDF generation
+                # Format messages to match expected log format (with "Human Message" / "Ai Message" markers)
                 agent.log = []
                 for msg in main_history_copy:
-                    agent.log.append({
-                        'role': msg['role'],
-                        'content': msg['content'],
-                        'type': 'message'
-                    })
+                    role = msg.get('role', 'user')
+                    content = msg.get('content', '')
+                    
+                    # Format to match the expected log format that _normalize_log_messages parses
+                    if role == 'user':
+                        formatted_entry = f"================================ Human Message =================================\n\n{content}"
+                    else:  # assistant
+                        formatted_entry = f"================================== Ai Message ==================================\n\n{content}"
+                    
+                    agent.log.append(formatted_entry)
                 
                 with open(debug_file, 'a') as f:
                     f.write(f"Populated agent.log with {len(agent.log)} messages\n")
