@@ -68,6 +68,7 @@ class A1:
         output_folder: str | None = None,
         logprobs: bool | None = None,
         top_logprobs: int | None = None,
+        model_kwargs: dict | None = None,
     ):
         """Initialize the biomni agent.
 
@@ -213,6 +214,7 @@ class A1:
             config=default_config,
             logprobs=logprobs,
             top_logprobs=top_logprobs,
+            model_kwargs=model_kwargs,
         )
         self._logprobs_enabled = bool(logprobs)
         self._all_logprobs = []  # Collect logprobs from all generate() calls

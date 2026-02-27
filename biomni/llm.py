@@ -20,6 +20,7 @@ def get_llm(
     config: Optional["BiomniConfig"] = None,
     logprobs: bool | None = None,
     top_logprobs: int | None = None,
+    model_kwargs: dict | None = None,
 ) -> BaseChatModel:
     """
     Get a language model instance based on the specified model name and source.
@@ -273,6 +274,8 @@ def get_llm(
             kwargs["logprobs"] = logprobs
         if top_logprobs is not None:
             kwargs["top_logprobs"] = top_logprobs
+        if model_kwargs is not None:
+            kwargs["model_kwargs"] = model_kwargs
         llm = ChatOpenAI(**kwargs)
         return llm
 
