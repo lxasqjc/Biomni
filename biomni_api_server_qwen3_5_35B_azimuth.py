@@ -39,6 +39,9 @@ _GLOBAL_CHAT_TEMPLATE_KWARGS: Optional[Dict[str, Any]] = (
     else None
 )
 
+# Optional global reasoning_effort: "low", "medium", "high" — passed via extra_body to vLLM (≥0.8.x).
+_GLOBAL_REASONING_EFFORT: Optional[str] = os.environ.get("BIOMNI_REASONING_EFFORT") or None
+
 print("Biomni API server configured for per-request agent instances...")
 
 # Test agent initialization at startup (optional verification)
@@ -83,6 +86,8 @@ class ChatRequest(BaseModel):
     model: Optional[str] = None
     # vLLM chat_template_kwargs, e.g. {"enable_thinking": true} for Qwen3.5 thinking mode
     chat_template_kwargs: Optional[Dict[str, Any]] = None
+    # reasoning_effort: "low", "medium", "high" — passed via extra_body to vLLM (≥0.8.x)
+    reasoning_effort: Optional[str] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -98,6 +103,7 @@ async def run_biomni_sync(
     top_logprobs: int = None,
     chat_template_kwargs: Optional[Dict[str, Any]] = None,
     model: Optional[str] = None,
+    reasoning_effort: Optional[str] = None,
 ):
     """Run Biomni agent asynchronously with fresh instance per request"""
     # Generate timestamp for this query
@@ -121,11 +127,19 @@ async def run_biomni_sync(
         effective_ctk = dict(_GLOBAL_CHAT_TEMPLATE_KWARGS or {})
         if chat_template_kwargs:
             effective_ctk.update(chat_template_kwargs)
+        # Resolve reasoning_effort: per-request > global env var
+        effective_re = reasoning_effort or _GLOBAL_REASONING_EFFORT
+        # Build extra_body for vLLM extensions
+        extra_body: Dict[str, Any] = {}
         if effective_ctk:
+            extra_body["chat_template_kwargs"] = effective_ctk
+        if effective_re:
+            extra_body["reasoning_effort"] = effective_re
+        if extra_body:
             # Must be nested under extra_body so the OpenAI client passes it as a raw
             # request body field (vLLM extension) rather than a create() kwarg.
-            agent_kwargs['model_kwargs'] = {"extra_body": {"chat_template_kwargs": effective_ctk}}
-            print(f"[Biomni API] chat_template_kwargs: {effective_ctk}")
+            agent_kwargs['model_kwargs'] = {"extra_body": extra_body}
+            print(f"[Biomni API] extra_body: {extra_body}")
         agent = A1(**agent_kwargs)
         
         # Run the agent - simplified call without output_queue
@@ -230,6 +244,7 @@ async def chat_endpoint(request: ChatRequest):
         top_logprobs=request.top_logprobs,
         chat_template_kwargs=request.chat_template_kwargs,
         model=request.model,
+        reasoning_effort=request.reasoning_effort,
     )
     
     return ChatResponse(
@@ -254,6 +269,7 @@ async def openai_chat_completions(request: dict):
         top_logprobs=req_top_logprobs,
         model=request.get("model") if request.get("model") != "biomni" else None,
         chat_template_kwargs=request.get("chat_template_kwargs"),
+        reasoning_effort=request.get("reasoning_effort"),
     )
     response = await chat_endpoint(our_request)
     
