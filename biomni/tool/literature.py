@@ -10,15 +10,22 @@ from bs4 import BeautifulSoup
 from googlesearch import search
 
 # ---------------------------------------------------------------------------
-# Persistent search cache — unlimited size for long-running local workstations.
-# Keyed by (function_name, query, relevant_params).
+# Persistent, cross-process search cache backed by diskcache (SQLite).
+# Shared across all Biomni API server instances on this machine.
+# Stored at ~/.biomni/search_cache by default (override via BIOMNI_SEARCH_CACHE_DIR).
 # ---------------------------------------------------------------------------
-_search_cache: dict[tuple, str] = {}
+import diskcache as _dc
+
+_CACHE_DIR = os.path.join(
+    os.environ.get("BIOMNI_SEARCH_CACHE_DIR", os.path.expanduser("~/.biomni/search_cache"))
+)
+_search_cache = _dc.Cache(_CACHE_DIR, eviction_policy="none")  # no eviction — keep everything
+print(f"[Search Cache] disk cache at {_CACHE_DIR}  ({len(_search_cache)} entries)")
 
 
-def _cache_key(func_name: str, *args) -> tuple:
+def _cache_key(func_name: str, *args) -> str:
     """Build a hashable cache key from function name and arguments."""
-    return (func_name,) + args
+    return repr((func_name,) + args)
 
 
 def fetch_supplementary_info_from_doi(doi: str, output_dir: str = "supplementary_info"):
