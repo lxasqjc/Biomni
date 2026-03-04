@@ -9,6 +9,17 @@ import requests
 from bs4 import BeautifulSoup
 from googlesearch import search
 
+# ---------------------------------------------------------------------------
+# Persistent search cache — unlimited size for long-running local workstations.
+# Keyed by (function_name, query, relevant_params).
+# ---------------------------------------------------------------------------
+_search_cache: dict[tuple, str] = {}
+
+
+def _cache_key(func_name: str, *args) -> tuple:
+    """Build a hashable cache key from function name and arguments."""
+    return (func_name,) + args
+
 
 def fetch_supplementary_info_from_doi(doi: str, output_dir: str = "supplementary_info"):
     """Fetches supplementary information for a paper given its DOI and returns a research log.
@@ -100,15 +111,22 @@ def query_arxiv(query: str, max_papers: int = 10) -> str:
     - str: The formatted search results or an error message.
 
     """
+    key = _cache_key("query_arxiv", query, max_papers)
+    if key in _search_cache:
+        print(f"[Cache HIT] query_arxiv: {query!r}")
+        return _search_cache[key]
+
     import arxiv
 
     try:
         client = arxiv.Client()
         search = arxiv.Search(query=query, max_results=max_papers, sort_by=arxiv.SortCriterion.Relevance)
         results = "\n\n".join([f"Title: {paper.title}\nSummary: {paper.summary}" for paper in client.results(search)])
-        return results if results else "No papers found on arXiv."
+        result = results if results else "No papers found on arXiv."
     except Exception as e:
-        return f"Error querying arXiv: {e}"
+        result = f"Error querying arXiv: {e}"
+    _search_cache[key] = result
+    return result
 
 
 def query_scholar(query: str) -> str:
@@ -123,6 +141,11 @@ def query_scholar(query: str) -> str:
     - str: The first search result formatted or an error message.
 
     """
+    key = _cache_key("query_scholar", query)
+    if key in _search_cache:
+        print(f"[Cache HIT] query_scholar: {query!r}")
+        return _search_cache[key]
+
     from scholarly import ProxyGenerator, scholarly
 
     # Set up a ProxyGenerator object to use free proxies
@@ -134,11 +157,13 @@ def query_scholar(query: str) -> str:
         search_query = scholarly.search_pubs(query)
         result = next(search_query, None)
         if result:
-            return f"Title: {result['bib']['title']}\nYear: {result['bib']['pub_year']}\nVenue: {result['bib']['venue']}\nAbstract: {result['bib']['abstract']}"
+            out = f"Title: {result['bib']['title']}\nYear: {result['bib']['pub_year']}\nVenue: {result['bib']['venue']}\nAbstract: {result['bib']['abstract']}"
         else:
-            return "No results found on Google Scholar."
+            out = "No results found on Google Scholar."
     except Exception as e:
-        return f"Error querying Google Scholar: {e}"
+        out = f"Error querying Google Scholar: {e}"
+    _search_cache[key] = out
+    return out
 
 
 def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3, fallback_to_google: bool = True) -> str:
@@ -156,6 +181,11 @@ def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3, fallbac
     - str: The formatted search results or an error message.
 
     """
+    key = _cache_key("query_pubmed", query, max_papers, max_retries, fallback_to_google)
+    if key in _search_cache:
+        print(f"[Cache HIT] query_pubmed: {query!r}")
+        return _search_cache[key]
+
     from pymed import PubMed
 
     try:
@@ -177,7 +207,7 @@ def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3, fallbac
             results = "\n\n".join(
                 [f"Title: {paper.title}\nAbstract: {paper.abstract}\nJournal: {paper.journal}" for paper in papers]
             )
-            return results
+            out = results
         else:
             # Fallback to Google search if enabled
             if fallback_to_google:
@@ -185,16 +215,18 @@ def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3, fallbac
                 try:
                     google_results = search_google(query + " research paper", num_results=max_papers)
                     if google_results and google_results.strip():
-                        return f"[Note: PubMed returned no results after {max_retries} retry attempts. Showing Google Search results:]\n\n{google_results}"
+                        out = f"[Note: PubMed returned no results after {max_retries} retry attempts. Showing Google Search results:]\n\n{google_results}"
                     else:
-                        return "No papers found on PubMed or Google Search."
+                        out = "No papers found on PubMed or Google Search."
                 except Exception as google_error:
                     print(f"[PubMed] Google fallback also failed: {google_error}")
-                    return "No papers found on PubMed after multiple query attempts. Google fallback also failed."
+                    out = "No papers found on PubMed after multiple query attempts. Google fallback also failed."
             else:
-                return "No papers found on PubMed after multiple query attempts."
+                out = "No papers found on PubMed after multiple query attempts."
     except Exception as e:
-        return f"Error querying PubMed: {e}"
+        out = f"Error querying PubMed: {e}"
+    _search_cache[key] = out
+    return out
 
 
 def search_google(query: str, num_results: int = 3, language: str = "en") -> list[dict]:
@@ -210,8 +242,13 @@ def search_google(query: str, num_results: int = 3, language: str = "en") -> lis
         List[dict]: List of dictionaries containing search results with title and URL
 
     """
+    key = _cache_key("search_google", query, num_results, language)
+    if key in _search_cache:
+        print(f"[Cache HIT] search_google: {query!r}")
+        return _search_cache[key]
+
+    results_string = ""
     try:
-        results_string = ""
         search_query = f"{query}"
 
         print(f"Searching for {search_query} with {num_results} results and {language} language")
@@ -226,6 +263,7 @@ def search_google(query: str, num_results: int = 3, language: str = "en") -> lis
 
     except Exception as e:
         print(f"Error performing search: {str(e)}")
+    _search_cache[key] = results_string
     return results_string
 
 
@@ -252,6 +290,11 @@ def advanced_web_search_claude(
     full_text : str
         A formatted string containing the full text response from Claude and the citations.
     """
+    key = _cache_key("advanced_web_search_claude", query, max_searches)
+    if key in _search_cache:
+        print(f"[Cache HIT] advanced_web_search_claude: {query!r}")
+        return _search_cache[key]
+
     import random
 
     # Check for required API keys - prefer Serper/Jina as Claude API is not available
@@ -261,7 +304,9 @@ def advanced_web_search_claude(
     
     # If Serper is available, use the alternative implementation
     if serper_key:
-        return advanced_web_search_serper(query, max_results=max_searches * 3)
+        result = advanced_web_search_serper(query, max_results=max_searches * 3)
+        _search_cache[key] = result
+        return result
     
     # Fallback to Claude if available
     if anthropic_key:
@@ -310,6 +355,7 @@ def advanced_web_search_claude(
                             for cite in blk.citations:
                                 citations.append({"url": cite.url, "title": cite.title, "cited_text": cite.cited_text})
                                 formatted_response += f"(Citation: {cite.title} - {cite.url})"
+                _search_cache[key] = formatted_response
                 return formatted_response
 
             except Exception as e:
@@ -318,7 +364,9 @@ def advanced_web_search_claude(
                     delay *= 2
                     continue
                 print(f"Error performing web search after {max_retries} attempts: {str(e)}")
-                return f"Error performing web search after {max_retries} attempts: {str(e)}"
+                err = f"Error performing web search after {max_retries} attempts: {str(e)}"
+                _search_cache[key] = err
+                return err
     
     # No API keys available
     return "Error: Web search unavailable. Please set SERPER_API_KEY or ANTHROPIC_API_KEY environment variable."
@@ -343,6 +391,11 @@ def advanced_web_search_serper(
     str
         Formatted search results with citations.
     """
+    key = _cache_key("advanced_web_search_serper", query, max_results)
+    if key in _search_cache:
+        print(f"[Cache HIT] advanced_web_search_serper: {query!r}")
+        return _search_cache[key]
+
     serper_key = os.getenv("SERPER_API_KEY")
     jina_key = os.getenv("JINA_API_KEY")
     
@@ -399,10 +452,13 @@ def advanced_web_search_serper(
         if not results:
             formatted += "No results found."
         
+        _search_cache[key] = formatted
         return formatted
         
     except Exception as e:
-        return f"Error performing web search: {str(e)}"
+        err = f"Error performing web search: {str(e)}"
+        _search_cache[key] = err
+        return err
 
 
 def extract_url_content(url: str) -> str:

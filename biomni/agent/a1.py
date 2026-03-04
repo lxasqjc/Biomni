@@ -218,6 +218,8 @@ class A1:
         )
         self._logprobs_enabled = bool(logprobs)
         self._all_logprobs = []  # Collect logprobs from all generate() calls
+        self._consecutive_search_failures = 0  # Circuit breaker for search tools
+        self._search_circuit_breaker_limit = 5
         self.module2api = module2api
         self.use_tool_retriever = use_tool_retriever
 
@@ -1580,6 +1582,28 @@ Each library is listed with its description to help you understand its functiona
                 self._execution_results.append(execution_entry)
 
                 observation = f"\n<observation>{result}</observation>"
+
+                # --- Search circuit breaker ---
+                _SEARCH_FUNCS = ("search_google", "query_pubmed", "query_arxiv",
+                                 "query_scholar", "advanced_web_search_claude",
+                                 "advanced_web_search_serper")
+                code_has_search = any(fn in code for fn in _SEARCH_FUNCS)
+                if code_has_search:
+                    _FAIL_INDICATORS = ("Error", "429", "timed out", "No results found",
+                                        "No papers found", "rate limit", "HTTPError",
+                                        "ConnectionError", "unavailable")
+                    if any(ind in result for ind in _FAIL_INDICATORS):
+                        self._consecutive_search_failures += 1
+                        print(f"[Circuit Breaker] search failure #{self._consecutive_search_failures}")
+                    else:
+                        self._consecutive_search_failures = 0
+                    if self._consecutive_search_failures >= self._search_circuit_breaker_limit:
+                        observation += ("\n\n⚠️ Search tools have failed "
+                                        f"{self._consecutive_search_failures} consecutive times. "
+                                        "Please answer using only your internal knowledge and "
+                                        "any data already loaded. Do not attempt further searches.")
+                        print(f"[Circuit Breaker] TRIGGERED after {self._consecutive_search_failures} failures")
+
                 state["messages"].append(AIMessage(content=observation.strip()))
 
             return state
