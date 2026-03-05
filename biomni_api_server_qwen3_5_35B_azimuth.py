@@ -29,6 +29,9 @@ AGENT_CONFIG = {
     'base_url': os.environ.get("BIOMNI_BASE_URL", _DEFAULT_BASE_URL),
     'api_key': os.environ.get("BIOMNI_API_KEY", _DEFAULT_API_KEY),
     'commercial_mode': os.environ.get("BIOMNI_COMMERCIAL_MODE", "true").lower() != "false",
+    # Tool retriever: pre-filters tools per query to prevent search loops.
+    # Default False to preserve existing behaviour. Set env BIOMNI_USE_TOOL_RETRIEVER=true to enable.
+    'use_tool_retriever': os.environ.get("BIOMNI_USE_TOOL_RETRIEVER", "false").lower() == "true",
 }
 
 # Optional global chat_template_kwargs applied to every request (e.g. enable_thinking).
@@ -88,6 +91,8 @@ class ChatRequest(BaseModel):
     chat_template_kwargs: Optional[Dict[str, Any]] = None
     # reasoning_effort: "low", "medium", "high" — passed via extra_body to vLLM (≥0.8.x)
     reasoning_effort: Optional[str] = None
+    # Tool retriever: pre-filters tools per query. Overrides server-level BIOMNI_USE_TOOL_RETRIEVER.
+    use_tool_retriever: Optional[bool] = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -104,6 +109,7 @@ async def run_biomni_sync(
     chat_template_kwargs: Optional[Dict[str, Any]] = None,
     model: Optional[str] = None,
     reasoning_effort: Optional[str] = None,
+    use_tool_retriever: Optional[bool] = None,
 ):
     """Run Biomni agent asynchronously with fresh instance per request"""
     # Generate timestamp for this query
@@ -120,6 +126,9 @@ async def run_biomni_sync(
         # Per-request model override
         if model:
             agent_kwargs['llm'] = model
+        # Per-request tool retriever override
+        if use_tool_retriever is not None:
+            agent_kwargs['use_tool_retriever'] = use_tool_retriever
         if logprobs:
             agent_kwargs['logprobs'] = logprobs
             agent_kwargs['top_logprobs'] = top_logprobs if top_logprobs else 20
@@ -245,6 +254,7 @@ async def chat_endpoint(request: ChatRequest):
         chat_template_kwargs=request.chat_template_kwargs,
         model=request.model,
         reasoning_effort=request.reasoning_effort,
+        use_tool_retriever=request.use_tool_retriever,
     )
     
     return ChatResponse(
@@ -270,6 +280,7 @@ async def openai_chat_completions(request: dict):
         model=request.get("model") if request.get("model") != "biomni" else None,
         chat_template_kwargs=request.get("chat_template_kwargs"),
         reasoning_effort=request.get("reasoning_effort"),
+        use_tool_retriever=request.get("use_tool_retriever"),
     )
     response = await chat_endpoint(our_request)
     
@@ -369,6 +380,7 @@ async def health_check():
         "model": AGENT_CONFIG["llm"],
         "base_url": AGENT_CONFIG["base_url"],
         "chat_template_kwargs": _GLOBAL_CHAT_TEMPLATE_KWARGS,
+        "use_tool_retriever": AGENT_CONFIG.get("use_tool_retriever", False),
     }
 
 @app.get("/")
