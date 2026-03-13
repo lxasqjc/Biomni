@@ -5,10 +5,13 @@ This class provides a unified interface to evaluate user answers against ground 
 for all tasks in the BiomniEval1 benchmark.
 """
 
+import glob
 import json
+import os
 from typing import Any
 
 import pandas as pd
+import pyarrow as pa
 
 
 class BiomniEval1:
@@ -16,19 +19,22 @@ class BiomniEval1:
     Evaluation loader for BiomniEval1 benchmark
 
     Usage:
-        evaluator = BiomniEval1('biomni_eval1_dataset.parquet')
+        evaluator = BiomniEval1()
         score = evaluator.evaluate('gwas_causal_gene_opentargets', 0, 'BRCA1')
     """
 
     def __init__(self):
         """
-        Initialize the BiomniEval1 evaluator
+        Initialize the BiomniEval1 evaluator.
 
-        Args:
-            dataset_path: Path to the merged dataset parquet file
+        Tries to load from HuggingFace Hub first; falls back to the local
+        HF datasets cache (Arrow IPC stream) when Hub is unreachable.
         """
+        try:
+            self.df = pd.read_parquet("hf://datasets/biomni/Eval1/biomni_eval1_dataset.parquet")
+        except Exception:
+            self.df = self._load_from_hf_cache()
 
-        self.df = pd.read_parquet("hf://datasets/biomni/Eval1/biomni_eval1_dataset.parquet")
 
         # Create index mapping for fast lookup using task_instance_id
         self.instance_map = {}
@@ -37,6 +43,25 @@ class BiomniEval1:
             self.instance_map[key] = idx
 
         print(f"Loaded BiomniEval1 dataset: {len(self.df)} instances across {self.df['task_name'].nunique()} tasks")
+
+    @staticmethod
+    def _load_from_hf_cache() -> pd.DataFrame:
+        """Load dataset from local HuggingFace datasets cache (Arrow IPC stream format)."""
+        cache_root = os.path.expanduser("~/.cache/huggingface/datasets/biomni___eval1")
+        arrow_files = glob.glob(os.path.join(cache_root, "**", "*.arrow"), recursive=True)
+        if not arrow_files:
+            raise FileNotFoundError(
+                "Dataset not found in HF cache. Run: "
+                "load_dataset('biomni/Eval1', split='test') to download it first."
+            )
+        frames = []
+        for path in sorted(arrow_files):
+            with pa.memory_map(path, "r") as src:
+                table = pa.ipc.open_stream(src).read_all()
+            frames.append(table.to_pandas())
+        df = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+        print(f"Loaded BiomniEval1 from local HF cache: {path}")
+        return df
 
     def evaluate(self, task_name: str, task_instance_id: int, user_answer: str) -> float:
         """
