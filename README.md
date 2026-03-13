@@ -328,7 +328,7 @@ agent.go("Plan a CRISPR screen to identify genes regulating T cell exhaustion")
 from biomni.eval import BiomniEval1
 
 evaluator = BiomniEval1()
-score = evaluator.evaluate('gwas_causal_gene_opentargets', 0, 'BRCA1')
+score = evaluator.evaluate('gwas_causal_gene_opentargets', 767, 'HNF1A')
 ```
 
 

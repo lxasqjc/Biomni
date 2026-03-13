@@ -20,7 +20,7 @@ class BiomniEval1:
 
     Usage:
         evaluator = BiomniEval1()
-        score = evaluator.evaluate('gwas_causal_gene_opentargets', 0, 'BRCA1')
+        score = evaluator.evaluate('gwas_causal_gene_opentargets', 767, 'HNF1A')
     """
 
     def __init__(self):
@@ -78,7 +78,11 @@ class BiomniEval1:
         # Look up the instance in the dataset using task_instance_id
         key = (task_name, task_instance_id)
         if key not in self.instance_map:
-            raise ValueError(f"Instance not found: task={task_name}, task_instance_id={task_instance_id}")
+            valid_ids = sorted(self.df[self.df["task_name"] == task_name]["task_instance_id"].tolist())
+            hint = f"Valid task_instance_ids: {valid_ids[:10]}{'...' if len(valid_ids) > 10 else ''}"
+            raise ValueError(
+                f"Instance not found: task={task_name}, task_instance_id={task_instance_id}. {hint}"
+            )
 
         df_idx = self.instance_map[key]
         row = self.df.iloc[df_idx]
@@ -195,7 +199,11 @@ class BiomniEval1:
         """
         key = (task_name, task_instance_id)
         if key not in self.instance_map:
-            raise ValueError(f"Instance not found: task={task_name}, task_instance_id={task_instance_id}")
+            valid_ids = sorted(self.df[self.df["task_name"] == task_name]["task_instance_id"].tolist())
+            hint = f"Valid task_instance_ids: {valid_ids[:10]}{'...' if len(valid_ids) > 10 else ''}"
+            raise ValueError(
+                f"Instance not found: task={task_name}, task_instance_id={task_instance_id}. {hint}"
+            )
 
         df_idx = self.instance_map[key]
         row = self.df.iloc[df_idx]
