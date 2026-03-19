@@ -766,7 +766,7 @@ def main():
         def stop_execution():
             """Stop the current execution"""
             stop_requested[0] = True
-            return "Stopping..."
+            return '<span style="color:#dc2626;font-size:14px">🛑 Stopping…</span>'
         
         def approve_plan():
             """Approve the plan and continue execution"""
@@ -942,28 +942,29 @@ def main():
                 )
                 stop_btn = gr.Button("🛑 Stop", size="sm", variant="stop", scale=1)
             
-            status_text = gr.Textbox(label="Status", visible=False, interactive=False)
+            status_html = gr.HTML(value="", visible=True)
             
-            # Bind submission — disable input while running to show loading state
+            # Bind submission with loading indicator
+            LOADING_HTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 0"><span class="loader" style="width:18px;height:18px;border:3px solid #ddd;border-top:3px solid #2563eb;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block"></span><span style="color:#555;font-size:14px">⏳ Biomni is working…</span></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>'
             prompt_input.submit(
-                lambda: gr.MultimodalTextbox(interactive=False, placeholder="⏳ Biomni is working..."),
+                lambda: LOADING_HTML,
                 None,
-                [prompt_input]
+                [status_html]
             ).then(
                 generate_response,
                 [prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
                 [innerloop_chatbot, main_chatbot],
-                show_progress="minimal"
+                show_progress="hidden"
             ).then(
-                lambda: gr.MultimodalTextbox(value=None, interactive=True, placeholder="Ask something or upload a file..."),
+                lambda: ("", gr.MultimodalTextbox(value=None)),
                 None,
-                [prompt_input]
+                [status_html, prompt_input]
             )
             
             # Bind stop button
             stop_btn.click(
                 stop_execution,
-                outputs=[status_text]
+                outputs=[status_html]
             )
             
             # Bind approval buttons - simple flag setting, no restart
@@ -1010,7 +1011,28 @@ def main():
                 outputs=[approval_status]
             )
 
-        
+            # Reset session state on page load (refresh)
+            def reset_session():
+                """Reset all session state when a new client connects / page refreshes."""
+                main_history_copy.clear()
+                full_session_log.clear()
+                stop_requested[0] = False
+                query_counter[0] = 0
+                hitl_state.reset()
+                # Create fresh output folder for this session
+                session_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                session_folder = os.path.join(LOCAL_OUTPUTS_DIR, session_id)
+                os.makedirs(session_folder, exist_ok=True)
+                agent.output_folder = session_folder
+                AGENT_CONFIG['output_folder'] = session_folder
+                print(f"🔄 New session started: {session_folder}")
+                return [], [], ""
+
+            demo.load(
+                reset_session,
+                None,
+                [main_chatbot, innerloop_chatbot, status_html]
+            )
         # Launch
         print(f"\n🎨 Launching Gradio UI on http://{SERVER_NAME}:{GRADIO_PORT}")
         print("   Press Ctrl+C to stop the server\n")
