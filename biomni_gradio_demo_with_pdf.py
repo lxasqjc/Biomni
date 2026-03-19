@@ -857,6 +857,7 @@ def main():
                 ],
                 value="🚀 YOLO (Full Automation)",
                 label="Execution Mode",
+                interactive=True,
                 info="YOLO: automatic execution | HITL: review plans before execution"
             )
             
