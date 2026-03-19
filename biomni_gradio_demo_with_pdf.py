@@ -157,7 +157,9 @@ def main():
         
         # Conversation tracking
         main_history_copy = []
+        full_session_log = []  # Rich log with code/observations for PDF
         stop_requested = [False]  # Flag to signal stop request
+        query_counter = [0]  # Incremented per query for unique LangGraph thread_id
         
         SUPPORTED_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".pdf")
         
@@ -242,20 +244,20 @@ def main():
                     f.write(f"Session folder: {session_folder_name}\n")
                     f.write(f"PDF path: {pdf_path}\n")
                 
-                # Populate agent.log from main_history_copy for PDF generation
-                # Format messages to match expected log format (with "Human Message" / "Ai Message" markers)
-                agent.log = []
-                for msg in main_history_copy:
-                    role = msg.get('role', 'user')
-                    content = msg.get('content', '')
-                    
-                    # Format to match the expected log format that _normalize_log_messages parses
-                    if role == 'user':
-                        formatted_entry = f"================================ Human Message =================================\n\n{content}"
-                    else:  # assistant
-                        formatted_entry = f"================================== Ai Message ==================================\n\n{content}"
-                    
-                    agent.log.append(formatted_entry)
+                # Populate agent.log from full_session_log (includes code/observations)
+                # Falls back to main_history_copy (Q&A only) if no executor steps recorded
+                if full_session_log:
+                    agent.log = list(full_session_log)
+                else:
+                    agent.log = []
+                    for msg in main_history_copy:
+                        role = msg.get('role', 'user')
+                        content = msg.get('content', '')
+                        if role == 'user':
+                            formatted_entry = f"================================ Human Message =================================\n\n{content}"
+                        else:
+                            formatted_entry = f"================================== Ai Message ==================================\n\n{content}"
+                        agent.log.append(formatted_entry)
                 
                 with open(debug_file, 'a') as f:
                     f.write(f"Populated agent.log with {len(agent.log)} messages\n")
@@ -341,18 +343,20 @@ def main():
             text_input = prompt_input.get("text", "")
             files = prompt_input.get("files", [])
             
-            main_history_copy.append({"role": "user", "content": text_input})
             main_history.append(gr.ChatMessage(role="user", content=text_input if text_input else "[Uploaded file]"))
             
             # Add "Executor is working on it" message
             main_history.append(gr.ChatMessage(role="assistant", content="Executor is working on it 👉"))
             yield inner_history, main_history
             
-            # Process uploaded files
+            # Process uploaded files — annotate before storing in history
             for file_info in files:
                 text_input += f"\n\n User uploaded this file: {file_info}\n Please use it if needed."
             
-            # Prepare agent messages
+            main_history_copy.append({"role": "user", "content": text_input})
+            full_session_log.append(f"================================ Human Message =================================\n\n{text_input}")
+            
+            # Prepare agent messages from full conversation history
             agent_messages = []
             for msg in main_history_copy:
                 if msg["role"] == "user":
@@ -361,11 +365,11 @@ def main():
                     if msg["content"] not in ["Executor is working on it 👉"]:
                         agent_messages.append(AIMessage(content=msg["content"]))
             
-            agent_messages.append(HumanMessage(content=text_input))
-            
-            # Prepare inputs
+            # Prepare inputs — use unique thread_id per query so MemorySaver
+            # doesn't inject duplicate history from prior turns
+            query_counter[0] += 1
             inputs = {"messages": agent_messages, "next_step": None}
-            config = {"recursion_limit": 500, "configurable": {"thread_id": 42}}
+            config = {"recursion_limit": 500, "configurable": {"thread_id": query_counter[0]}}
             
             t = time()
             solution_found = False
@@ -515,20 +519,32 @@ def main():
                                     metadata={"title": "🤔 Reasoning"}
                                 )
                             )
+                            full_session_log.append(f"================================== Ai Message ==================================\n\n{thinking}")
                             yield inner_history, main_history
                     
                     # Check for solution
                     solution_match = re.search(r"<solution>(.*?)</solution>", message.content, re.DOTALL)
                     if solution_match and not solution_found:
                         solution = solution_match.group(1).strip()
-                        main_history.append(
-                            gr.ChatMessage(
-                                role="assistant",
-                                content=solution,
-                                metadata={"title": "✅ Answer"}
+                        # Replace the "Executor is working on it" placeholder
+                        for i in range(len(main_history) - 1, -1, -1):
+                            if hasattr(main_history[i], 'content') and main_history[i].content == "Executor is working on it 👉":
+                                main_history[i] = gr.ChatMessage(
+                                    role="assistant",
+                                    content=solution,
+                                    metadata={"title": "✅ Answer"}
+                                )
+                                break
+                        else:
+                            main_history.append(
+                                gr.ChatMessage(
+                                    role="assistant",
+                                    content=solution,
+                                    metadata={"title": "✅ Answer"}
+                                )
                             )
-                        )
                         main_history_copy.append({"role": "assistant", "content": solution})
+                        full_session_log.append(f"================================== Ai Message ==================================\n\n<solution>{solution}</solution>")
                         solution_found = True
                         yield inner_history, main_history
                     
@@ -627,6 +643,7 @@ def main():
                         )
                         inner_history.append(code_msg)
                         code_execution_messages.append(code_msg)
+                        full_session_log.append(f"================================== Ai Message ==================================\n\n<execute>\n{code}\n</execute>")
                         yield inner_history, main_history
                     
                     # Check for observation
@@ -641,6 +658,7 @@ def main():
                                 metadata={"status": "done", "title": "📊 Output"}
                             )
                         )
+                        full_session_log.append(f"================================ Human Message =================================\n\n<observation>\n{observation}\n</observation>")
                         yield inner_history, main_history
                         
                         # Check for generated files
@@ -697,22 +715,29 @@ def main():
                     # Stream ended naturally
                     break  # Exit while True loop
             
-            # If no solution found, add final message
+            # If no solution found, replace placeholder with final message
             if not solution_found:
                 final_message = s["messages"][-1].content if s["messages"] else ""
                 solution_match = re.search(r"<solution>(.*?)</solution>", final_message, re.DOTALL)
                 if solution_match:
                     solution = solution_match.group(1).strip()
-                    main_history.append(gr.ChatMessage(role="assistant", content=solution, metadata={"title": "✅ Solution"}))
-                    main_history_copy.append({"role": "assistant", "content": solution})
+                    content, title = solution, "✅ Solution"
                 else:
                     cleaned_content = re.sub(r"<execute>.*?</execute>", "", final_message, flags=re.DOTALL)
                     cleaned_content = re.sub(r"<observation>.*?</observation>", "", cleaned_content, flags=re.DOTALL)
-                    cleaned_content = re.sub(r"\n\s*\n", "\n\n", cleaned_content)
-                    
-                    if cleaned_content.strip():
-                        main_history.append(gr.ChatMessage(role="assistant", content=cleaned_content.strip(), metadata={"title": "📝 Summary"}))
-                        main_history_copy.append({"role": "assistant", "content": cleaned_content.strip()})
+                    cleaned_content = re.sub(r"\n\s*\n", "\n\n", cleaned_content).strip()
+                    content, title = cleaned_content, "📝 Summary"
+                
+                if content:
+                    # Replace the "Executor is working on it" placeholder
+                    for i in range(len(main_history) - 1, -1, -1):
+                        if hasattr(main_history[i], 'content') and main_history[i].content == "Executor is working on it 👉":
+                            main_history[i] = gr.ChatMessage(role="assistant", content=content, metadata={"title": title})
+                            break
+                    else:
+                        main_history.append(gr.ChatMessage(role="assistant", content=content, metadata={"title": title}))
+                    main_history_copy.append({"role": "assistant", "content": content})
+                    full_session_log.append(f"================================== Ai Message ==================================\n\n{content}")
             
             # Add completion message
             inner_history.append(
@@ -919,12 +944,21 @@ def main():
             
             status_text = gr.Textbox(label="Status", visible=False, interactive=False)
             
-            # Bind submission
+            # Bind submission — disable input while running to show loading state
             prompt_input.submit(
+                lambda: gr.MultimodalTextbox(interactive=False, placeholder="⏳ Biomni is working..."),
+                None,
+                [prompt_input]
+            ).then(
                 generate_response,
                 [prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
-                [innerloop_chatbot, main_chatbot]
-            ).then(lambda: gr.MultimodalTextbox(value=None), None, [prompt_input])
+                [innerloop_chatbot, main_chatbot],
+                show_progress="minimal"
+            ).then(
+                lambda: gr.MultimodalTextbox(value=None, interactive=True, placeholder="Ask something or upload a file..."),
+                None,
+                [prompt_input]
+            )
             
             # Bind stop button
             stop_btn.click(
