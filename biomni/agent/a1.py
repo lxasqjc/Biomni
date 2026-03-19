@@ -196,7 +196,7 @@ class A1:
             print("Skipping datalake download (load_datalake=False)")
             print("Note: Some tools may require datalake files to function properly.")
 
-        self.path = os.path.join(path, "biomni_data")
+        self.path = os.path.abspath(os.path.join(path, "biomni_data"))
         module2api = read_module2api()
 
         # Store output folder for file operations (sandbox support)
