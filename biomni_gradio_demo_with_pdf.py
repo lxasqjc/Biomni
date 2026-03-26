@@ -317,12 +317,14 @@ def main():
                     f.write(traceback.format_exc())
                 return None
         
-        def generate_response(prompt_input, inner_history=None, main_history=None, mode="🚀 YOLO (Full Automation)"):
+        def generate_response(text_input, file_uploads=None, inner_history=None, main_history=None, mode="🚀 YOLO (Full Automation)"):
             """Generate response and create PDF report"""
             if main_history is None:
                 main_history = []
             if inner_history is None:
                 inner_history = []
+            if file_uploads is None:
+                file_uploads = []
             
             # Reset HITL state for new query and update mode
             hitl_state.reset()
@@ -340,8 +342,7 @@ def main():
                 initial_plan_status = "🚀 YOLO mode - automatic execution without approval"
                 initial_step_status = "🚀 YOLO mode - automatic execution without approval"
             
-            text_input = prompt_input.get("text", "")
-            files = prompt_input.get("files", [])
+            files = file_uploads if isinstance(file_uploads, list) else ([file_uploads] if file_uploads else [])
             
             main_history.append(gr.ChatMessage(role="user", content=text_input if text_input else "[Uploaded file]"))
             
@@ -933,14 +934,21 @@ def main():
 
             
             with gr.Row():
-                prompt_input = gr.MultimodalTextbox(
-                    interactive=True,
-                    file_count="multiple",
-                    placeholder="Ask something or upload a file...",
+                prompt_input = gr.Textbox(
+                    lines=3,
+                    placeholder="Ask something...",
                     show_label=False,
-                    scale=4
+                    scale=4,
+                    container=False,
                 )
-                stop_btn = gr.Button("🛑 Stop", size="sm", variant="stop", scale=1)
+                with gr.Column(scale=1, min_width=120):
+                    stop_btn = gr.Button("🛑 Stop", size="sm", variant="stop")
+                    file_upload = gr.File(
+                        label="📎 Upload",
+                        file_count="multiple",
+                        visible=True,
+                        scale=1,
+                    )
             
             status_html = gr.HTML(value="", visible=True)
             
@@ -952,13 +960,17 @@ def main():
                 [status_html]
             ).then(
                 generate_response,
-                [prompt_input, innerloop_chatbot, main_chatbot, execution_mode],
+                [prompt_input, file_upload, innerloop_chatbot, main_chatbot, execution_mode],
                 [innerloop_chatbot, main_chatbot],
                 show_progress="hidden"
             ).then(
-                lambda: ("", gr.MultimodalTextbox(value=None)),
+                lambda: ("", None),
                 None,
-                [status_html, prompt_input]
+                [prompt_input, file_upload]
+            ).then(
+                lambda: "",
+                None,
+                [status_html]
             )
             
             # Bind stop button
