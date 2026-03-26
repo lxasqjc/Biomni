@@ -936,42 +936,54 @@ def main():
             with gr.Row():
                 prompt_input = gr.Textbox(
                     lines=3,
-                    placeholder="Ask something...",
+                    placeholder="Ask something... (or press Shift+Enter for new line, Enter to submit)",
                     show_label=False,
                     scale=4,
                     container=False,
                 )
-                with gr.Column(scale=1, min_width=120):
+                with gr.Column(scale=1, min_width=140):
+                    submit_btn = gr.Button("▶ Send", variant="primary", size="sm")
                     stop_btn = gr.Button("🛑 Stop", size="sm", variant="stop")
                     file_upload = gr.File(
                         label="📎 Upload",
                         file_count="multiple",
                         visible=True,
-                        scale=1,
                     )
             
             status_html = gr.HTML(value="", visible=True)
             
             # Bind submission with loading indicator
             LOADING_HTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 0"><span class="loader" style="width:18px;height:18px;border:3px solid #ddd;border-top:3px solid #2563eb;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block"></span><span style="color:#555;font-size:14px">⏳ Biomni is working…</span></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>'
-            prompt_input.submit(
-                lambda: LOADING_HTML,
-                None,
-                [status_html]
-            ).then(
-                generate_response,
-                [prompt_input, file_upload, innerloop_chatbot, main_chatbot, execution_mode],
-                [innerloop_chatbot, main_chatbot],
-                show_progress="hidden"
-            ).then(
-                lambda: ("", None),
-                None,
-                [prompt_input, file_upload]
-            ).then(
-                lambda: "",
-                None,
-                [status_html]
-            )
+
+            def run_chain():
+                return (
+                    prompt_input.submit(
+                        lambda: LOADING_HTML, None, [status_html]
+                    ).then(
+                        generate_response,
+                        [prompt_input, file_upload, innerloop_chatbot, main_chatbot, execution_mode],
+                        [innerloop_chatbot, main_chatbot],
+                        show_progress="hidden"
+                    ).then(
+                        lambda: ("", None, ""),
+                        None,
+                        [prompt_input, file_upload, status_html]
+                    )
+                )
+
+            for trigger in [prompt_input.submit, submit_btn.click]:
+                trigger(
+                    lambda: LOADING_HTML, None, [status_html]
+                ).then(
+                    generate_response,
+                    [prompt_input, file_upload, innerloop_chatbot, main_chatbot, execution_mode],
+                    [innerloop_chatbot, main_chatbot],
+                    show_progress="hidden"
+                ).then(
+                    lambda: ("", None, ""),
+                    None,
+                    [prompt_input, file_upload, status_html]
+                )
             
             # Bind stop button
             stop_btn.click(
