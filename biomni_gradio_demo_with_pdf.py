@@ -887,44 +887,6 @@ def main():
                 info="YOLO: automatic execution | HITL: review plans before execution"
             )
             
-            # Integrated approval controls - compact row format
-            with gr.Group():
-                gr.Markdown("### 🤝 HITL Approval Controls")
-                
-                # Plan approval - compact single row
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        plan_editor = gr.Textbox(
-                            label="📋 Plan (editable in HITL mode)",
-                            lines=4,
-                            interactive=True,
-                            placeholder="Generated plan will appear here when in HITL mode. You can edit it before approving.",
-                            show_label=True
-                        )
-                    with gr.Column(scale=1):
-                        gr.Markdown("**Plan Actions:**")
-                        approve_btn = gr.Button("✅ Approve", variant="primary", size="sm")
-                        edit_replan_btn = gr.Button("✏️ Edit & Re-plan", variant="secondary", size="sm")
-                        edit_execute_btn = gr.Button("⚡ Edit & Execute", variant="secondary", size="sm")
-                        reject_btn = gr.Button("❌ Reject", variant="stop", size="sm")
-                
-                # Step approval - compact single row
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        approval_status = gr.Textbox(
-                            label="Status",
-                            value="Ready. Select HITL mode and ask a question to start.",
-                            interactive=False,
-                            show_label=True,
-                            lines=2
-                        )
-                    with gr.Column(scale=1):
-                        gr.Markdown("**Step Actions:**")
-                        approve_step_btn = gr.Button("✅ This Step", variant="primary", size="sm")
-                        approve_all_btn = gr.Button("⏩ All Steps", variant="secondary", size="sm")
-                        skip_step_btn = gr.Button("⏭️ Skip", size="sm")
-                        stop_step_btn = gr.Button("🛑 Stop", variant="stop", size="sm")
-            
             # Hidden fields for compatibility
             plan_display = gr.Textbox(visible=False)
             step_status = gr.Textbox(visible=False)
@@ -951,7 +913,43 @@ def main():
                     )
             
             status_html = gr.HTML(value="", visible=True)
-            
+
+            # HITL Approval Controls — collapsed by default, below prompt
+            with gr.Accordion("🤝 HITL Approval Controls", open=False):
+                # Plan approval
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        plan_editor = gr.Textbox(
+                            label="📋 Plan (editable in HITL mode)",
+                            lines=4,
+                            interactive=True,
+                            placeholder="Generated plan will appear here when in HITL mode. You can edit it before approving.",
+                            show_label=True
+                        )
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Plan Actions:**")
+                        approve_btn = gr.Button("✅ Approve", variant="primary", size="sm")
+                        edit_replan_btn = gr.Button("✏️ Edit & Re-plan", variant="secondary", size="sm")
+                        edit_execute_btn = gr.Button("⚡ Edit & Execute", variant="secondary", size="sm")
+                        reject_btn = gr.Button("❌ Reject", variant="stop", size="sm")
+
+                # Step approval
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        approval_status = gr.Textbox(
+                            label="Status",
+                            value="Ready. Select HITL mode and ask a question to start.",
+                            interactive=False,
+                            show_label=True,
+                            lines=2
+                        )
+                    with gr.Column(scale=1):
+                        gr.Markdown("**Step Actions:**")
+                        approve_step_btn = gr.Button("✅ This Step", variant="primary", size="sm")
+                        approve_all_btn = gr.Button("⏩ All Steps", variant="secondary", size="sm")
+                        skip_step_btn = gr.Button("⏭️ Skip", size="sm")
+                        stop_step_btn = gr.Button("🛑 Stop", variant="stop", size="sm")
+
             # Bind submission with loading indicator
             LOADING_HTML = '<div style="display:flex;align-items:center;gap:8px;padding:6px 0"><span class="loader" style="width:18px;height:18px;border:3px solid #ddd;border-top:3px solid #2563eb;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block"></span><span style="color:#555;font-size:14px">⏳ Biomni is working…</span></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>'
 
