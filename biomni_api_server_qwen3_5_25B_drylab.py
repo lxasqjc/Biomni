@@ -15,6 +15,9 @@ from datetime import datetime
 import os
 import asyncio
 import gc
+import threading
+import time
+import requests as _requests
 
 # ---------------------------------------------------------------------------
 # Startup configuration: env vars > defaults
@@ -72,6 +75,23 @@ os.makedirs('./local_outputs', exist_ok=True)
 print("PDF outputs will be saved to: ./local_outputs/")
 
 app = FastAPI(title="Biomni API", description="FastAPI server for Biomni biomedical agent")
+
+def _start_vllm_keepalive(base_url: str, interval_seconds: int = 300):
+    """Background thread that pings vLLM /models every interval_seconds to prevent engine sleep."""
+    def _ping():
+        while True:
+            try:
+                resp = _requests.get(f"{base_url}/models", timeout=10)
+                print(f"[Keepalive] vLLM ping -> HTTP {resp.status_code}")
+            except Exception as e:
+                print(f"[Keepalive] vLLM ping failed: {e}")
+            time.sleep(interval_seconds)
+    t = threading.Thread(target=_ping, daemon=True, name="vllm-keepalive")
+    t.start()
+    print(f"[Keepalive] Started vLLM keepalive thread (interval={interval_seconds}s) -> {base_url}")
+
+
+_start_vllm_keepalive(AGENT_CONFIG["base_url"])
 
 # Pydantic models for API
 class Message(BaseModel):

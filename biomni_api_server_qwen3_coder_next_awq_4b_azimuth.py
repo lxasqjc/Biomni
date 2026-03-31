@@ -2,7 +2,7 @@
 """
 FastAPI server for Biomni agent - flexible model name and chat_template_kwargs support.
 Model/endpoint can be configured via environment variables:
-  BIOMNI_MODEL       - model name (default: Qwen-3.5-35B-AWQ-4bit)
+  BIOMNI_MODEL       - model name (default: Qwen3-Coder-Next-AWQ-4bit)
   BIOMNI_BASE_URL    - vLLM base URL
   BIOMNI_API_KEY     - API key
   BIOMNI_COMMERCIAL_MODE - "true"/"false"
@@ -22,7 +22,7 @@ import requests as _requests
 # ---------------------------------------------------------------------------
 # Startup configuration: env vars > defaults
 # ---------------------------------------------------------------------------
-_DEFAULT_MODEL    = "Qwen-3.5-35B-AWQ-4bit"
+_DEFAULT_MODEL    = "Qwen3-Coder-Next-AWQ-4bit"
 _DEFAULT_BASE_URL = "https://vllm.paas-jade.astrazeneca.net/v1"
 _DEFAULT_API_KEY  = "natura15tup1d1ty"
 
