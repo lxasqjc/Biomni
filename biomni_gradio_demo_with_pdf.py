@@ -395,9 +395,17 @@ def main():
             t = time()
             solution_found = False
             code_execution_messages = []
+            step_num = 0
+            
+            print(f"\n{'='*60}")
+            print(f"[Query #{query_counter[0]}] Started at {datetime.now().strftime('%H:%M:%S')}")
+            print(f"[Query #{query_counter[0]}] Prompt: {text_input[:120]}{'...' if len(text_input) > 120 else ''}")
+            print(f"[Query #{query_counter[0]}] Mode: {mode}")
+            print(f"{'='*60}")
             
             # Stream agent responses - may need to restart after HITL approval
-            while True:  # Outer loop to allow stream restart
+            try:
+              while True:  # Outer loop to allow stream restart
                 stream_ended_naturally = True
                 
                 # Stream agent responses
@@ -422,7 +430,27 @@ def main():
                         return
                 
                 t_step = time() - t
+                step_num += 1
                 message = s["messages"][-1]
+                
+                # Backend logging — what step are we on, what type, how long
+                content_preview = ""
+                msg_type = "unknown"
+                if isinstance(message.content, str):
+                    if "<solution>" in message.content:
+                        msg_type = "SOLUTION"
+                        content_preview = re.sub(r'</?solution>', '', message.content)[:100]
+                    elif "<execute>" in message.content:
+                        msg_type = "EXECUTE"
+                        code_snippet = re.search(r"<execute>(.*?)</execute>", message.content, re.DOTALL)
+                        content_preview = code_snippet.group(1).strip()[:100] if code_snippet else message.content[:100]
+                    elif "<observation>" in message.content:
+                        msg_type = "OBSERVE"
+                        content_preview = message.content.replace("<observation>", "").replace("</observation>", "")[:100]
+                    else:
+                        msg_type = "THINK"
+                        content_preview = message.content[:100]
+                print(f"[Query #{query_counter[0]}] Step {step_num:>3} | {t_step:6.1f}s | {msg_type:<8} | {content_preview}...")
                 
                 # Extract and track plan if present (HITL mode only) - DO THIS FIRST
                 if isinstance(message.content, str):
@@ -735,6 +763,20 @@ def main():
                 else:
                     # Stream ended naturally
                     break  # Exit while True loop
+            except Exception as e:
+                import traceback
+                error_msg = f"Agent error: {type(e).__name__}: {e}"
+                print(f"[Query #{query_counter[0]}] ❌ {error_msg}")
+                traceback.print_exc()
+                # Replace placeholder with error message
+                for i in range(len(main_history) - 1, -1, -1):
+                    if hasattr(main_history[i], 'content') and main_history[i].content == "Executor is working on it 👉":
+                        main_history[i] = gr.ChatMessage(role="assistant", content=f"⚠️ {error_msg}", metadata={"title": "❌ Error"})
+                        break
+                else:
+                    main_history.append(gr.ChatMessage(role="assistant", content=f"⚠️ {error_msg}", metadata={"title": "❌ Error"}))
+                yield inner_history, main_history
+                return
             
             # If no solution found, replace placeholder with final message
             if not solution_found:
@@ -761,6 +803,10 @@ def main():
                     full_session_log.append(f"================================== Ai Message ==================================\n\n{content}")
             
             # Add completion message
+            total_time = time() - t
+            print(f"[Query #{query_counter[0]}] Completed in {total_time:.1f}s | Steps: {step_num} | Solution: {'Yes' if solution_found else 'No'}")
+            print(f"{'='*60}\n")
+            
             inner_history.append(
                 gr.ChatMessage(
                     role="assistant",
