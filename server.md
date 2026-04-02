@@ -16,11 +16,12 @@ cd /alan-data/jinc/git_chen/Biomni && conda activate biomni_e1
 # To stop a specific service:       systemctl --user stop biomni-8010.scope
 # To stop all biomni services:      systemctl --user stop 'biomni-*.scope'
 #
-# RESTART PATTERN: Each for-loop uses this 3-step pattern per port:
-#   1. lsof + kill -9  — force-kill any process on the port (instant)
-#   2. systemctl reset-failed — clear stale/failed scope so the unit name can be reused
+# RESTART PATTERN: Before each for-loop, run daemon-reload to clear zombie scopes,
+# then each iteration kills the old process and resets the scope:
+#   0. systemctl --user daemon-reload  — clears zombie scopes (run ONCE before loop)
+#   1. lsof + kill -9  — force-kill any process on the port
+#   2. systemctl reset-failed — clear scope in "failed" state
 #   3. systemd-run — launch new process in a fresh scope
-# If scopes get stuck with 0 tasks, run: systemctl --user daemon-reload
 
 cd /alan-data/jinc/git_chen/Biomni && conda activate biomni_e1
 systemd-run --user --scope --unit=biomni-httpd bash -c 'cd /alan-data/jinc/git_chen/Biomni/local_outputs && exec python -m http.server 8100' > /dev/null 2>&1 &
@@ -31,6 +32,7 @@ systemd-run --user --scope --unit=biomni-8009 bash -c 'exec uvicorn biomni_api_s
 
 systemd-run --user --scope --unit=biomni-8020 bash -c 'exec uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app --host 0.0.0.0 --port 8020 > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_auto_clean_azimuth_8020_2.log 2>&1' &
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {8010..8041}; do
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_auto_clean_azimuth_$port.log 2>&1" &
 done
@@ -38,6 +40,7 @@ done
 lsof -t -i :8012 | xargs kill -9
 systemd-run --user --scope --unit=biomni-8012 bash -c 'exec uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app --host 0.0.0.0 --port 8012 > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_auto_clean_azimuth_8012.log 2>&1' &
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {8020..8041}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_auto_clean_azimuth_$port.log 2>&1" &
@@ -50,6 +53,7 @@ done
 
 
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {8010..8022}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_auto_clean_azimuth_$port.log 2>&1" &
@@ -62,20 +66,24 @@ BIOMNI_MODEL="Qwen-3.5-35B-AWQ-4bit" BIOMNI_ENABLE_THINKING=true \
      systemd-run --user --scope --unit=biomni-9020 bash -c 'exec uvicorn biomni_api_server_qwen3_5_35B_azimuth:app --host 0.0.0.0 --port 9020 > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_5_35B_azimuth_no_think_9020.log 2>&1' &
 
 BIOMNI_MODEL="Qwen-3.5-35B-AWQ-4bit" BIOMNI_ENABLE_THINKING=true
+systemctl --user daemon-reload 2>/dev/null
 for port in {9020..9030}; do
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_5_35B_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_5_35B_azimuth_no_think_$port.log 2>&1" &
 done
 BIOMNI_MODEL="Qwen-3.5-35B-AWQ-4bit" BIOMNI_ENABLE_THINKING=true
+systemctl --user daemon-reload 2>/dev/null
 for port in {9031..9040}; do
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_5_35B_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_5_35B_azimuth_no_think_$port.log 2>&1" &
 done
 
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {7020..7030}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_5_35B_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_5_35B_azimuth_$port.log 2>&1" &
 done
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {7020..7040}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_5_35B_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_5_35B_azimuth_$port.log 2>&1" &
@@ -93,17 +101,20 @@ curl -X POST http://localhost:9020/chat \
   -d '{"prompt": "hello", "chat_template_kwargs": {"enable_thinking": false}}'
 
 # Qwen3.5-25B (UD_Q6_K_XL.gguf) on ludwig drylab 
+systemctl --user daemon-reload 2>/dev/null
 for port in {7015..7018}; do
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_5_25B_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_5_25B_drylab_$port.log 2>&1" &
 done
 
 # Qwen3-Coder-Next-AWQ-4bit on Azimuth
+systemctl --user daemon-reload 2>/dev/null
 for port in {7020..7030}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3_coder_next_awq_4b_azimuth:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_coder_next_awq_4b_azimuth_$port.log 2>&1" &
 done
 
 # Qwen3-Next-80B AWQ-4bit on http://alan:5401/v1
+systemctl --user daemon-reload 2>/dev/null
 for port in {7031..7040}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3next_80b_awq4b_drylab_$port.log 2>&1" &
@@ -117,12 +128,14 @@ BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/hugg
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg001.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6000..6010}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg001_$port.log 2>&1" &
 done
 
 BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" BIOMNI_BASE_URL="http://semlscpg002.scp.astrazeneca.net:8000/v1"
+systemctl --user daemon-reload 2>/dev/null
 for port in {6011..6019}; do
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_$port.log 2>&1" &
 done
@@ -131,6 +144,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg002.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6020..6029}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg002_$port.log 2>&1" &
@@ -140,6 +154,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg003.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6030..6039}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg003_$port.log 2>&1" &
@@ -149,6 +164,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg005.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6050..6059}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg005_$port.log 2>&1" &
@@ -158,6 +174,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed"
 export BIOMNI_BASE_URL="http://semlscpg006.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6060..6069}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg006_$port.log 2>&1" &
@@ -167,6 +184,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg007.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6070..6079}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg007_$port.log 2>&1" &
@@ -175,6 +193,7 @@ done
 # semlscpg008
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg008.scp.astrazeneca.net:8000/v1"
+systemctl --user daemon-reload 2>/dev/null
 for port in {6080..6089}; do
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg008_$port.log 2>&1" &
 done
@@ -183,6 +202,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg009.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6090..6099}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg009_$port.log 2>&1" &
@@ -192,6 +212,7 @@ done
 export BIOMNI_MODEL="/home/jovyan/vol-1/root_chen/git_chen/data/models_chen/.cache/huggingface/hub/models--Qwen--Qwen3-Next-80B-A3B-Instruct/snapshots/b8bdf23cb031b0364158445817f675436f2482ed" 
 export BIOMNI_BASE_URL="http://semlscpg012.scp.astrazeneca.net:8000/v1"
 
+systemctl --user daemon-reload 2>/dev/null
 for port in {6120..6129}; do
   pid=$(lsof -t -i :$port 2>/dev/null) && [ -n "$pid" ] && kill -9 $pid 2>/dev/null; systemctl --user reset-failed biomni-$port.scope 2>/dev/null
   systemd-run --user --scope --unit=biomni-$port bash -c "exec uvicorn biomni_api_server_qwen3next_80b_awq4b_drylab:app --host 0.0.0.0 --port $port > /alan-data/jinc/git_chen/Biomni/logs/biomni_api_server_qwen3_next_80b_a3b_scp_semlscpg012_$port.log 2>&1" &
