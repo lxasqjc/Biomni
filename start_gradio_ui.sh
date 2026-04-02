@@ -21,9 +21,9 @@ if [ ! -z "$EXISTING_PID" ]; then
     echo "✅ Killed existing server (PID: $EXISTING_PID)"
 fi
 
-# Start server with correct Python
+# Start server with correct Python (setsid for tmux resilience, -u for unbuffered logs)
 echo "🚀 Starting Gradio UI on port 7861..."
-nohup /alan-data/jinc/miniconda3/envs/biomni_e1/bin/python biomni_gradio_demo_with_pdf.py > biomni_gradio_with_pdf.log 2>&1 &
+setsid nohup /alan-data/jinc/miniconda3/envs/biomni_e1/bin/python -u biomni_gradio_demo_with_pdf.py > biomni_gradio_with_pdf.log 2>&1 &
 SERVER_PID=$!
 echo "✅ Server started with PID: $SERVER_PID"
 echo "📋 Log file: biomni_gradio_with_pdf.log"

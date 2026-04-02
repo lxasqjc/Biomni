@@ -15,6 +15,8 @@ from biomni.agent import A1
 from datetime import datetime
 from langchain_core.messages import HumanMessage, AIMessage
 import re
+import threading
+import requests as _requests
 from time import time, sleep
 from dataclasses import dataclass, field
 from typing import Optional
@@ -32,6 +34,24 @@ AGENT_CONFIG = {
     'output_folder': None,  # Will be set dynamically per session
     'use_tool_retriever': False
 }
+
+
+def _start_vllm_keepalive(base_url: str, interval_seconds: int = 300):
+    """Background thread that pings vLLM /models every `interval_seconds` to prevent engine sleep."""
+    def _ping():
+        while True:
+            try:
+                resp = _requests.get(f"{base_url}/models", timeout=10)
+                print(f"[Keepalive] vLLM ping → HTTP {resp.status_code}")
+            except Exception as e:
+                print(f"[Keepalive] vLLM ping failed: {e}")
+            sleep(interval_seconds)
+    t = threading.Thread(target=_ping, daemon=True, name="vllm-keepalive")
+    t.start()
+    print(f"[Keepalive] Started vLLM keepalive thread (interval={interval_seconds}s) → {base_url}")
+
+
+_start_vllm_keepalive(AGENT_CONFIG["base_url"])
 
 # PDF report settings
 ENABLE_PDF_REPORTS = True
