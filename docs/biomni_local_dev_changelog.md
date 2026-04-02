@@ -249,3 +249,42 @@ All fixes were tested against live API servers (ports 8010–8022, 6000–6010, 
 | Bare function calls (NameError) | N/A (new) | ~1% | 🔧 Mitigated (v2 fix) |
 | `np.skew` hallucination | N/A (new) | 0.3% | 🔧 Mitigated (v2 fix) |
 | Serper 400 errors | 0.4% | 0.4% | 🔧 Mitigated (v2 fix, needs re-test) |
+
+---
+
+## v3 Fixes (2026-04-02)
+
+**Commit:** `6ccc454` — `fix: v3 error analysis fixes — cache cleanup, column inspection, import hints`
+
+**Analysis:** `docs/biomni_api_error_analysis_v3.md` (5,698 queries, 51 logs, 5 SCP groups)
+
+### Changes
+
+1. **`biomni/tool/literature.py`** — Stop caching error results in all 6 search functions (arxiv, scholar, pubmed, google, serper, claude). Serper 400 errors were permanently cached, causing repeat failures. Also added cache-hit bypass for stale error entries.
+
+2. **`biomni/agent/a1.py`** — Strengthened system prompt:
+   - Added `extract_url_content` and `query_uniprot` to FUNCTION IMPORT REFERENCE
+   - Added explicit "Do NOT call without importing" warning
+   - Added multi-line code requirement (fixes single-line syntax errors)
+   - Added explicit column inspection pattern with example code
+   - Added data validation hints (empty checks, dtype verification)
+   - Added `math` import reminder
+
+3. **Cache cleanup** — Purged 19,294 stale error entries from `~/.biomni/search_cache` (~63% of cache was poisoned).
+
+### Cherry-pick
+
+```bash
+git cherry-pick 6ccc454   # v3 fixes: cache cleanup, column inspection, import hints
+```
+
+### v3 Error Rate Comparison
+
+| Fix | v2 Rate (6,119 q) | v3 Rate (5,698 q) | Status |
+|---|---|---|---|
+| All v1 targeted issues (8 categories) | 0% | 0% | ✅ Still resolved |
+| Bare function calls (NameError) | 1.00% | 0.90% | ➡️ Slightly improved |
+| Column guessing / not-in-index | 2.22% | 4.81% | ⚠️ Worsened (query mix) |
+| Invalid syntax (single-line code) | 2.08% | 1.35% | ✅ Improved |
+| Serper 400 (cached errors) | 0.44% | 0.77% | 🔧 Fixed (cache cleanup) |
+| `np.skew` hallucination | 0.28% | 0.09% | ✅ Improved |
