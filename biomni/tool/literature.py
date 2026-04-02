@@ -409,6 +409,9 @@ def advanced_web_search_serper(
     if not serper_key:
         return "Error: SERPER_API_KEY not configured."
     
+    # Sanitize query: truncate and strip control characters to prevent 400 errors
+    query = query.strip()[:256]
+    
     # Perform Google search via Serper
     try:
         headers = {

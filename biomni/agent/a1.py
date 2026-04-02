@@ -1170,9 +1170,16 @@ You may or may not receive feedbacks from human. If so, address the feedbacks by
         prompt_modifier += """
 PROTOCOL GENERATION:
 If the user requests an experimental protocol, use search_protocols(), advanced_web_search_claude(), list_local_protocols(), and read_local_protocol() to generate an accurate protocol. Include details such as reagents (with catalog numbers if available), equipment specifications, replicate requirements, error handling, and troubleshooting - but ONLY include information found in these resources. Do not make up specifications, catalog numbers, or equipment details. Prioritize accuracy over completeness.
-Import these functions as follows:
+
+FUNCTION IMPORT REFERENCE:
+When using any biomni function, you MUST import it first. Common imports:
   from biomni.tool.protocols import search_protocols, list_local_protocols, read_local_protocol
-  from biomni.tool.literature import advanced_web_search_claude
+  from biomni.tool.literature import advanced_web_search_claude, search_google, query_pubmed, query_scholar, query_arxiv
+  from biomni.tool.database import query_ensembl, query_opentarget, query_uniprot, query_kegg, query_stringdb
+
+CODING BEST PRACTICES:
+- Always inspect DataFrame columns with df.columns.tolist() and df.head() before accessing specific columns. Do not guess column names.
+- numpy does not have a skew() function. Use scipy.stats.skew() or pd.Series.skew() instead.
 """
 
         # Add custom resources section first (highlighted)
