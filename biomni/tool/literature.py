@@ -132,6 +132,8 @@ def query_arxiv(query: str, max_papers: int = 10) -> str:
         result = results if results else "No papers found on arXiv."
     except Exception as e:
         result = f"Error querying arXiv: {e}"
+        # Do NOT cache error results — transient failures should be retryable
+        return result
     _search_cache[key] = result
     return result
 
@@ -169,6 +171,8 @@ def query_scholar(query: str) -> str:
             out = "No results found on Google Scholar."
     except Exception as e:
         out = f"Error querying Google Scholar: {e}"
+        # Do NOT cache error results — transient failures should be retryable
+        return out
     _search_cache[key] = out
     return out
 
@@ -232,6 +236,8 @@ def query_pubmed(query: str, max_papers: int = 10, max_retries: int = 3, fallbac
                 out = "No papers found on PubMed after multiple query attempts."
     except Exception as e:
         out = f"Error querying PubMed: {e}"
+        # Do NOT cache error results — transient failures should be retryable
+        return out
     _search_cache[key] = out
     return out
 
@@ -270,6 +276,8 @@ def search_google(query: str, num_results: int = 3, language: str = "en") -> lis
 
     except Exception as e:
         print(f"Error performing search: {str(e)}")
+        # Do NOT cache empty/error results — transient failures should be retryable
+        return results_string
     _search_cache[key] = results_string
     return results_string
 
@@ -299,8 +307,11 @@ def advanced_web_search_claude(
     """
     key = _cache_key("advanced_web_search_claude", query, max_searches)
     if key in _search_cache:
-        print(f"[Cache HIT] advanced_web_search_claude: {query!r}")
-        return _search_cache[key]
+        cached = _search_cache[key]
+        # Skip cached error results so they can be retried
+        if not isinstance(cached, str) or not cached.startswith("Error"):
+            print(f"[Cache HIT] advanced_web_search_claude: {query!r}")
+            return _search_cache[key]
 
     import random
 
@@ -372,7 +383,7 @@ def advanced_web_search_claude(
                     continue
                 print(f"Error performing web search after {max_retries} attempts: {str(e)}")
                 err = f"Error performing web search after {max_retries} attempts: {str(e)}"
-                _search_cache[key] = err
+                # Do NOT cache error results — transient failures should be retryable
                 return err
     
     # No API keys available
@@ -400,8 +411,11 @@ def advanced_web_search_serper(
     """
     key = _cache_key("advanced_web_search_serper", query, max_results)
     if key in _search_cache:
-        print(f"[Cache HIT] advanced_web_search_serper: {query!r}")
-        return _search_cache[key]
+        cached = _search_cache[key]
+        # Skip cached error results so they can be retried
+        if not isinstance(cached, str) or not cached.startswith("Error"):
+            print(f"[Cache HIT] advanced_web_search_serper: {query!r}")
+            return cached
 
     serper_key = os.getenv("SERPER_API_KEY")
     jina_key = os.getenv("JINA_API_KEY")
@@ -467,7 +481,7 @@ def advanced_web_search_serper(
         
     except Exception as e:
         err = f"Error performing web search: {str(e)}"
-        _search_cache[key] = err
+        # Do NOT cache error results — transient failures should be retryable
         return err
 
 

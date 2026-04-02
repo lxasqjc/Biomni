@@ -1174,12 +1174,20 @@ If the user requests an experimental protocol, use search_protocols(), advanced_
 FUNCTION IMPORT REFERENCE:
 When using any biomni function, you MUST import it first. Common imports:
   from biomni.tool.protocols import search_protocols, list_local_protocols, read_local_protocol
-  from biomni.tool.literature import advanced_web_search_claude, search_google, query_pubmed, query_scholar, query_arxiv
+  from biomni.tool.literature import advanced_web_search_claude, search_google, query_pubmed, query_scholar, query_arxiv, extract_url_content
   from biomni.tool.database import query_ensembl, query_opentarget, query_uniprot, query_kegg, query_stringdb
+Do NOT call these functions without importing them first. Always include the import statement at the top of your <execute> block.
 
 CODING BEST PRACTICES:
-- Always inspect DataFrame columns with df.columns.tolist() and df.head() before accessing specific columns. Do not guess column names.
-- numpy does not have a skew() function. Use scipy.stats.skew() or pd.Series.skew() instead.
+- ALWAYS write multi-line Python code with proper newlines. Never put multiple statements (import, if, with, for, etc.) on the same line. Each statement MUST be on its own line inside <execute> blocks.
+- ALWAYS inspect DataFrame columns with print(df.columns.tolist()) and print(df.head()) before accessing specific columns. Do NOT guess column names — they are often different from what you expect.
+- When loading a new file (CSV, TSV, Parquet), ALWAYS print column names and first 2 rows before any analysis. Example:
+    df = pd.read_csv(path)
+    print("Columns:", df.columns.tolist())
+    print(df.head(2))
+- Validate data before operations: check df.empty, check array/list length > 0, verify dtypes match expected types.
+- numpy does NOT have a skew() function. Use scipy.stats.skew() or pd.Series.skew() instead.
+- import math explicitly if you need math functions (math.log, math.sqrt, etc.).
 """
 
         # Add custom resources section first (highlighted)
