@@ -45,9 +45,13 @@ if os.path.exists('./data/biomni_data/ibd_sim'):
 else:
     print("  - IBD data not found, check symbolic link")
 
-# Ensure local_outputs directory exists
-os.makedirs('./local_outputs', exist_ok=True)
-print("PDF outputs will be saved to: ./local_outputs/")
+# Local output folders are disabled by default (set BIOMNI_LOCAL_OUTPUTS=1 to enable)
+ENABLE_LOCAL_OUTPUTS = os.getenv("BIOMNI_LOCAL_OUTPUTS", "0").lower() in ("1", "true", "yes")
+if ENABLE_LOCAL_OUTPUTS:
+    os.makedirs('./local_outputs', exist_ok=True)
+    print("PDF outputs will be saved to: ./local_outputs/")
+else:
+    print("Local outputs disabled (set BIOMNI_LOCAL_OUTPUTS=1 to enable)")
 
 app = FastAPI(title="Biomni API", description="FastAPI server for Biomni biomedical agent")
 
@@ -96,11 +100,12 @@ async def run_biomni_sync(query: str, save_pdf: bool = True, logprobs: bool = No
     """Run Biomni agent asynchronously with fresh instance per request"""
     # Generate timestamp for this query
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # millisecond precision
-    output_folder = f"./local_outputs/{timestamp}"
+    output_folder = f"./local_outputs/{timestamp}" if ENABLE_LOCAL_OUTPUTS else None
     
     try:
         print(f"[Biomni API] Executing query: {query}")
-        print(f"[Biomni API] Output folder: {output_folder}")
+        if output_folder:
+            print(f"[Biomni API] Output folder: {output_folder}")
         
         # CREATE FRESH AGENT INSTANCE PER REQUEST (fixes memory + concurrency)
         print(f"[Biomni API] Creating fresh agent instance...")
@@ -142,11 +147,12 @@ async def run_biomni_sync(query: str, save_pdf: bool = True, logprobs: bool = No
         
         if save_pdf:
             try:
-                # Create timestamped output directory (only when saving PDF)
-                os.makedirs(output_folder, exist_ok=True)
+                # Create output dir on demand (even if local_outputs disabled, PDF needs a folder)
+                pdf_dir = output_folder or f"./local_outputs/{timestamp}"
+                os.makedirs(pdf_dir, exist_ok=True)
                 
                 # Save to the timestamped folder
-                full_pdf_path = os.path.join(output_folder, pdf_filename)
+                full_pdf_path = os.path.join(pdf_dir, pdf_filename)
                 agent.save_conversation_history(full_pdf_path, save_pdf=True)
                 pdf_path = f"{full_pdf_path}.pdf"  # The method adds .pdf extension
                 print(f"[Biomni API] PDF saved to: {pdf_path}")
