@@ -81,7 +81,10 @@ def _start_vllm_keepalive(base_url: str, interval_seconds: int = 300):
     def _ping():
         while True:
             try:
-                resp = _requests.get(f"{base_url}/models", timeout=10)
+                # Use a short-lived Session with Connection:close to avoid CLOSE-WAIT socket leak
+                with _requests.Session() as s:
+                    s.headers.update({"Connection": "close"})
+                    resp = s.get(f"{base_url}/models", timeout=10)
                 print(f"[Keepalive] vLLM ping -> HTTP {resp.status_code}")
             except Exception as e:
                 print(f"[Keepalive] vLLM ping failed: {e}")
