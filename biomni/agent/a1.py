@@ -1182,9 +1182,11 @@ CODING BEST PRACTICES:
 - ALWAYS write multi-line Python code with proper newlines. Never put multiple statements (import, if, with, for, etc.) on the same line. Each statement MUST be on its own line inside <execute> blocks.
 - ALWAYS inspect DataFrame columns with print(df.columns.tolist()) and print(df.head()) before accessing specific columns. Do NOT guess column names — they are often different from what you expect.
 - When loading a new file (CSV, TSV, Parquet), ALWAYS print column names and first 2 rows before any analysis. Example:
-    df = pd.read_csv(path)
+    df = pd.read_parquet(path)  # for .parquet files
     print("Columns:", df.columns.tolist())
     print(df.head(2))
+- DATA LAKE FORMAT: Most data lake files are in Parquet (.parquet) format. ALWAYS use pd.read_parquet(path) for .parquet files — it is 10-100x faster than pd.read_csv for large files. NEVER use pd.read_csv() on a .parquet file.
+- DATA LAKE INDEX: A file named DATA_LAKE_INDEX.md exists in the data lake directory. Read it first to understand available files, their formats, and key columns before deciding which file to use.
 - Validate data before operations: check df.empty, check array/list length > 0, verify dtypes match expected types.
 - numpy does NOT have a skew() function. Use scipy.stats.skew() or pd.Series.skew() instead.
 - import math explicitly if you need math functions (math.log, math.sqrt, etc.).
