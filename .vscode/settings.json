@@ -1,0 +1,13 @@
+{
+  "files.watcherExclude": {
+    "**/local_outputs/**": true,
+    "**/logs/**": true,
+    "**/__pycache__/**": true,
+    "**/biomni_env/**": true,
+    "**/.biomni/**": true
+  },
+  "search.exclude": {
+    "**/local_outputs/**": true,
+    "**/logs/**": true
+  }
+}
