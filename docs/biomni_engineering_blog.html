@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Biomni Engineering Notes — Stability, Performance & API Design</title>
+  <style>
+    :root {
+      --blue:    #1a73e8;
+      --green:   #1e8e3e;
+      --amber:   #f29900;
+      --red:     #d93025;
+      --purple:  #7c4dff;
+      --bg:      #f8f9fa;
+      --card:    #ffffff;
+      --border:  #e0e0e0;
+      --text:    #202124;
+      --muted:   #5f6368;
+      --code-bg: #f1f3f4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1a237e 0%, #1565c0 60%, #0288d1 100%);
+      color: #fff;
+      padding: 48px 40px 36px;
+    }
+    header .label {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      opacity: 0.75;
+      margin-bottom: 10px;
+    }
+    header h1 { font-size: 2.2rem; font-weight: 700; line-height: 1.25; }
+    header p  { margin-top: 12px; opacity: 0.85; font-size: 1rem; max-width: 680px; }
+    header .meta {
+      margin-top: 20px;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    header .meta span {
+      background: rgba(255,255,255,0.15);
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* ── Layout ── */
+    .wrapper { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+      margin: 36px 0;
+    }
+    .toc-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+      cursor: pointer;
+      transition: box-shadow .15s, transform .1s;
+      text-decoration: none;
+      color: inherit;
+    }
+    .toc-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.10); transform: translateY(-2px); }
+    .toc-card .icon { font-size: 1.5rem; margin-bottom: 8px; }
+    .toc-card h3 { font-size: .9rem; font-weight: 600; color: var(--blue); }
+    .toc-card p  { font-size: .8rem; color: var(--muted); margin-top: 4px; }
+
+    /* ── Section ── */
+    section { padding: 48px 0 12px; }
+    section + section { border-top: 1px solid var(--border); }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .section-header .num {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .95rem; flex-shrink: 0;
+      color: #fff;
+    }
+    .section-header h2 { font-size: 1.4rem; font-weight: 700; }
+    .section-header .tag {
+      margin-left: auto;
+      font-size: .75rem;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px 26px;
+      margin-bottom: 18px;
+    }
+    .card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 10px; }
+    .card p, .card li { font-size: .92rem; color: #333; }
+    .card ul, .card ol { padding-left: 1.4em; margin: 8px 0; }
+    .card li { margin: 4px 0; }
+
+    /* ── Before/After ── */
+    .diff-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 14px 0;
+    }
+    @media (max-width: 640px) { .diff-grid { grid-template-columns: 1fr; } }
+    .diff-before, .diff-after {
+      border-radius: 6px;
+      padding: 12px 14px;
+      font-size: .82rem;
+    }
+    .diff-before { background: #fce8e6; border-left: 3px solid var(--red); }
+    .diff-after  { background: #e6f4ea; border-left: 3px solid var(--green); }
+    .diff-before strong, .diff-after strong {
+      display: block; font-size: .75rem; font-weight: 700;
+      letter-spacing: .5px; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .diff-before strong { color: var(--red); }
+    .diff-after  strong { color: var(--green); }
+
+    /* ── Code ── */
+    pre {
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: 8px;
+      padding: 16px 18px;
+      overflow-x: auto;
+      font-size: .82rem;
+      line-height: 1.55;
+      margin: 12px 0;
+    }
+    code {
+      background: var(--code-bg);
+      border-radius: 3px;
+      padding: 1px 5px;
+      font-size: .85em;
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+    }
+    pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+
+    /* ── Stat grid ── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin: 16px 0;
+    }
+    .stat-box {
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .stat-box .num-big { font-size: 1.7rem; font-weight: 800; }
+    .stat-box .label  { font-size: .75rem; font-weight: 600; text-transform: uppercase;
+                        letter-spacing: .5px; margin-top: 2px; }
+
+    /* ── Table ── */
+    .tbl-wrap { overflow-x: auto; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    thead th {
+      background: #f1f3f4;
+      text-align: left;
+      padding: 9px 12px;
+      font-weight: 600;
+      border-bottom: 2px solid var(--border);
+    }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #f8f9fa; }
+
+    /* ── Callout ── */
+    .callout {
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 14px 0;
+      font-size: .9rem;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .callout.info    { background: #e8f0fe; border-left: 3px solid var(--blue); }
+    .callout.warn    { background: #fef7e0; border-left: 3px solid var(--amber); }
+    .callout.success { background: #e6f4ea; border-left: 3px solid var(--green); }
+    .callout.danger  { background: #fce8e6; border-left: 3px solid var(--red); }
+    .callout .icon   { font-size: 1.1rem; flex-shrink: 0; }
+
+    /* ── Pill / badge ── */
+    .pill {
+      display: inline-block;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .pill-green  { background: #e6f4ea; color: var(--green); }
+    .pill-red    { background: #fce8e6; color: var(--red); }
+    .pill-blue   { background: #e8f0fe; color: var(--blue); }
+    .pill-amber  { background: #fef7e0; color: #b06000; }
+    .pill-purple { background: #ede7f6; color: var(--purple); }
+
+    /* ── API reference ── */
+    .api-box {
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin: 12px 0;
+      font-size: .83rem;
+      font-family: 'Cascadia Code', Consolas, monospace;
+    }
+    .api-box .method { color: #89b4fa; font-weight: 700; }
+    .api-box .key    { color: #cba6f7; }
+    .api-box .val    { color: #a6e3a1; }
+    .api-box .comment{ color: #6c7086; }
+
+    /* ── Conversation ── */
+    .convo { margin: 16px 0; }
+    .bubble {
+      border-radius: 14px;
+      padding: 10px 16px;
+      margin: 6px 0;
+      max-width: 85%;
+      font-size: .9rem;
+    }
+    .bubble.user { background: var(--blue); color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+    .bubble.agent{ background: #e8f0fe; color: var(--text); border-bottom-left-radius: 4px; }
+    .bubble-label { font-size: .72rem; font-weight: 600; color: var(--muted); margin: 2px 4px; }
+
+    /* ── Footer ── */
+    footer {
+      background: #1a237e;
+      color: rgba(255,255,255,.7);
+      text-align: center;
+      padding: 24px;
+      font-size: .83rem;
+      margin-top: 60px;
+    }
+    footer a { color: rgba(255,255,255,.85); }
+
+    /* Color palette for section nums */
+    .c-blue   { background: var(--blue); }
+    .c-green  { background: var(--green); }
+    .c-amber  { background: var(--amber); }
+    .c-red    { background: var(--red); }
+    .c-purple { background: var(--purple); }
+
+    .divider { height: 1px; background: var(--border); margin: 32px 0; }
+    .flex { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════════════════════════════════ HEADER -->
+<header>
+  <div class="wrapper">
+    <div class="label">Biomni Engineering Notes</div>
+    <h1>Stability, Performance &amp; API Design</h1>
+    <p>
+      Lessons from running 50–100 Biomni API ports at scale on a shared HPC workstation,
+      debugging machine "deaths", fixing silent socket leaks, and migrating a 7.6 GB data
+      lake to Parquet for 10–100× faster agent reads.
+    </p>
+    <div class="meta">
+      <span>📅 April 2026</span>
+      <span>🏭 Platform: alan (251 GB RAM, 64 CPU)</span>
+      <span>🔗 Branch: local-development-v1</span>
+      <span>👤 Author: Copilot + JC</span>
+    </div>
+  </div>
+</header>
+
+<!-- ════════════════════════════════════════════════════════ TOC -->
+<div class="wrapper">
+  <div class="toc-grid" style="margin-top:36px;">
+    <a class="toc-card" href="#stability">
+      <div class="icon">🔬</div>
+      <h3>Part 1 · Machine Stability</h3>
+      <p>Root cause of machine "deaths" — memory, not I/O</p>
+    </a>
+    <a class="toc-card" href="#socket">
+      <div class="icon">🔌</div>
+      <h3>Part 2 · Socket Leak Fix</h3>
+      <p>74 CLOSE-WAIT connections from a 3-line bug</p>
+    </a>
+    <a class="toc-card" href="#outputs">
+      <div class="icon">🗂️</div>
+      <h3>Part 3 · Output Accumulation</h3>
+      <p>10,903 new dirs/day; disabled by default with env var</p>
+    </a>
+    <a class="toc-card" href="#parquet">
+      <div class="icon">⚡</div>
+      <h3>Part 4 · Parquet Migration</h3>
+      <p>7.6 GB → 2.9 GB; 10–100× faster data lake reads</p>
+    </a>
+    <a class="toc-card" href="#api">
+      <div class="icon">🛠️</div>
+      <h3>Part 5 · API Design</h3>
+      <p>Chat history, execution logs, PDF saving — how they work</p>
+    </a>
+    <a class="toc-card" href="#systemd">
+      <div class="icon">🔒</div>
+      <h3>Part 6 · Process Isolation</h3>
+      <p>systemd-run scopes: surviving tmux crashes</p>
+    </a>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ PART 1: STABILITY -->
+<div class="wrapper">
+<section id="stability">
+  <div class="section-header">
+    <div class="num c-red">1</div>
+    <h2>Machine "Deaths" — Root Cause Analysis</h2>
+    <span class="tag pill-red pill">Read-only investigation</span>
+  </div>
+
+  <div class="callout warn">
+    <span class="icon">⚠️</span>
+    <div><strong>Hypothesis proved wrong:</strong> The initial theory was I/O overload from running 50–100 API ports. The actual root cause is <strong>memory exhaustion</strong>. The OOM killer then kills random processes including SSH children, making the machine appear "dead".</div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-box" style="background:#fce8e6">
+      <div class="num-big" style="color:var(--red)">91%</div>
+      <div class="label" style="color:var(--red)">RAM used (229/251 GB)</div>
+    </div>
+    <div class="stat-box" style="background:#fce8e6">
+      <div class="num-big" style="color:var(--red)">100%</div>
+      <div class="label" style="color:var(--red)">Swap used (2/2 GB)</div>
+    </div>
+    <div class="stat-box" style="background:#fef7e0">
+      <div class="num-big" style="color:#b06000">10.7 GB</div>
+      <div class="label" style="color:#b06000">Avg RAM per active port</div>
+    </div>
+    <div class="stat-box" style="background:#fef7e0">
+      <div class="num-big" style="color:#b06000">2</div>
+      <div class="label" style="color:#b06000">New queries needed to trigger OOM</div>
+    </div>
+    <div class="stat-box" style="background:#e8f0fe">
+      <div class="num-big" style="color:var(--blue)">74</div>
+      <div class="label" style="color:var(--blue)">CLOSE-WAIT sockets leaked</div>
+    </div>
+    <div class="stat-box" style="background:#e8f0fe">
+      <div class="num-big" style="color:var(--blue)">99%</div>
+      <div class="label" style="color:var(--blue)">CPU burned by VSCode watcher</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🧩 Three Contributing Factors</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Factor</th><th>Evidence</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Memory exhaustion (primary)</strong><br>Active queries balloon each port to 10–24 GB RSS</td>
+            <td>229/251 GB used; 2/2 GB swap full; OOM threshold = 2 simultaneous new queries</td>
+            <td><span class="pill pill-amber">Mitigated (reduce concurrent queries)</span></td>
+          </tr>
+          <tr>
+            <td><strong>CLOSE-WAIT socket leak</strong><br>Keepalive thread leaks one TCP socket per ping</td>
+            <td>74 of 75 vLLM connections in CLOSE-WAIT; only 1 ESTABLISHED</td>
+            <td><span class="pill pill-green">Fixed (7867e18)</span></td>
+          </tr>
+          <tr>
+            <td><strong>VSCode fileWatcher</strong><br>139 K directories triggering inotify continuously</td>
+            <td>PID 1249281 at 99% CPU; 10,903 new dirs/day from queries</td>
+            <td><span class="pill pill-green">Fixed (.vscode/settings.json)</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>💡 Why does "machine death" look like a network outage?</h3>
+    <p>When the OOM killer fires, it kills processes ranked by <em>oom_score</em>. On a shared system, this can include <code>sshd</code> child processes handling your current sessions. The SSH connection drops, you can't reconnect, and the machine appears dead — but the hardware is fine. The sister node on the same network remains reachable because it's a separate process domain.</p>
+    <p style="margin-top:8px;">Confirmed by: SSH reconnecting successfully 10–15 min later once OOM pressure subsides naturally.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ PART 2: SOCKET LEAK -->
+<section id="socket">
+  <div class="section-header">
+    <div class="num c-red">2</div>
+    <h2>CLOSE-WAIT Socket Leak in vLLM Keepalive</h2>
+    <span class="tag pill-green pill">Fixed · commit 7867e18</span>
+  </div>
+
+  <p style="margin-bottom:16px;">Each API server runs a background thread that pings the remote vLLM <code>/models</code> endpoint every 300 seconds to prevent the inference engine from sleeping. A 3-line bug caused every ping to permanently leak a TCP socket.</p>
+
+  <div class="diff-grid">
+    <div class="diff-before">
+      <strong>❌ Before — leaks socket</strong>
+<pre style="background:transparent;color:inherit;padding:0;font-size:.82rem;"><code># Each ping opens a new TCP connection.
+# vLLM sends FIN. Local side never closes.
+# Socket stuck in CLOSE-WAIT indefinitely.
+resp = _requests.get(
+    f"{base_url}/models",
+    timeout=10
+)</code></pre>
+    </div>
+    <div class="diff-after">
+      <strong>✅ After — closes cleanly</strong>
+<pre style="background:transparent;color:inherit;padding:0;font-size:.82rem;"><code># Session context manager closes the
+# connection pool when the 'with' exits.
+# Connection: close tells vLLM to not
+# keep-alive from its side either.
+with _requests.Session() as s:
+    s.headers.update({"Connection": "close"})
+    resp = s.get(f"{base_url}/models",
+                 timeout=10)</code></pre>
+    </div>
+  </div>
+
+  <div class="callout info">
+    <span class="icon">ℹ️</span>
+    <div><strong>Does this affect experiment scripts?</strong> No. The keepalive thread is server-side only — it pings vLLM from the API server process. Your client's HTTP connection to the Biomni API, and the agent's inference calls to vLLM via the OpenAI client, are completely unaffected.</div>
+  </div>
+
+  <div class="card">
+    <h3>Files fixed (all 5 API servers)</h3>
+    <ul>
+      <li><code>biomni_api_server_qwen3next_80b_awq4b_drylab.py</code></li>
+      <li><code>biomni_api_server_qwen3_next_80b_auto_clean_azimuth.py</code></li>
+      <li><code>biomni_api_server_qwen3_5_25B_drylab.py</code></li>
+      <li><code>biomni_api_server_qwen3_5_35B_azimuth.py</code></li>
+      <li><code>biomni_api_server_qwen3_coder_next_awq_4b_azimuth.py</code></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ PART 3: LOCAL_OUTPUTS -->
+<section id="outputs">
+  <div class="section-header">
+    <div class="num c-amber">3</div>
+    <h2>Output Directory Accumulation</h2>
+    <span class="tag pill-green pill">Fixed · commit 9d16118</span>
+  </div>
+
+  <p style="margin-bottom:16px;">Every Biomni query created a timestamped directory under <code>local_outputs/</code> — even when running large batch experiments where no one ever looks at the output files.</p>
+
+  <div class="stat-grid">
+    <div class="stat-box" style="background:#fce8e6">
+      <div class="num-big" style="color:var(--red)">139 K</div>
+      <div class="label" style="color:var(--red)">Dirs before cleanup</div>
+    </div>
+    <div class="stat-box" style="background:#fce8e6">
+      <div class="num-big" style="color:var(--red)">10,903</div>
+      <div class="label" style="color:var(--red)">New dirs per day</div>
+    </div>
+    <div class="stat-box" style="background:#e6f4ea">
+      <div class="num-big" style="color:var(--green)">26 GB</div>
+      <div class="label" style="color:var(--green)">Freed by cleanup</div>
+    </div>
+    <div class="stat-box" style="background:#e6f4ea">
+      <div class="num-big" style="color:var(--green)">0</div>
+      <div class="label" style="color:var(--green)">New dirs at scale (now default)</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Opt-in via environment variable</h3>
+    <p>All 5 API servers now read <code>BIOMNI_LOCAL_OUTPUTS</code> at startup. Default is <code>0</code> (disabled). Set to <code>1</code> to re-enable for interactive/UI sessions where you want to keep intermediate files:</p>
+    <pre><code># Disabled (default — for batch experiments)
+uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app \
+  --host 0.0.0.0 --port 8020
+
+# Enabled (for interactive/UI sessions)
+BIOMNI_LOCAL_OUTPUTS=1 uvicorn biomni_api_server_qwen3_next_80b_auto_clean_azimuth:app \
+  --host 0.0.0.0 --port 8020</code></pre>
+
+    <p style="margin-top:10px;">If a client requests <code>save_pdf=True</code>, a directory is still created on-demand for that specific PDF — so PDF saving always works regardless of the flag.</p>
+  </div>
+
+  <div class="card">
+    <h3>One-time cleanup command</h3>
+<pre><code># Delete timestamped dirs older than 7 days (keeps named dirs like test_gradio)
+find local_outputs/ -mindepth 1 -maxdepth 1 -type d -mtime +7 -name "202[56]*" -print0 \
+  | xargs -0 -P8 rm -rf</code></pre>
+    <p>Named special directories (e.g. <code>test_gradio</code>, <code>deepresearch-discard</code>) are preserved automatically because they don't match the <code>202[56]*</code> glob pattern.</p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ PART 4: PARQUET -->
+<section id="parquet">
+  <div class="section-header">
+    <div class="num c-blue">4</div>
+    <h2>Data Lake CSV → Parquet Migration</h2>
+    <span class="tag pill-green pill">Fixed · commit 1d4a6fa</span>
+  </div>
+
+  <p style="margin-bottom:16px;">Biomni benchmark experiments run dozens of independent queries against the same large data lake files. Each query starts a fresh Python environment. The data lake was entirely in CSV/TSV format — slow to read, large on disk, and quickly evicted from OS page cache under memory pressure.</p>
+
+  <div class="stat-grid">
+    <div class="stat-box" style="background:#e8f0fe">
+      <div class="num-big" style="color:var(--blue)">7.6 GB</div>
+      <div class="label" style="color:var(--blue)">Original CSV/TSV total</div>
+    </div>
+    <div class="stat-box" style="background:#e6f4ea">
+      <div class="num-big" style="color:var(--green)">2.9 GB</div>
+      <div class="label" style="color:var(--green)">Parquet total</div>
+    </div>
+    <div class="stat-box" style="background:#e6f4ea">
+      <div class="num-big" style="color:var(--green)">62%</div>
+      <div class="label" style="color:var(--green)">Size reduction</div>
+    </div>
+    <div class="stat-box" style="background:#ede7f6">
+      <div class="num-big" style="color:var(--purple)">10–100×</div>
+      <div class="label" style="color:var(--purple)">Read speed improvement</div>
+    </div>
+    <div class="stat-box" style="background:#e6f4ea">
+      <div class="num-big" style="color:var(--green)">26</div>
+      <div class="label" style="color:var(--green)">CSV/TSV files converted</div>
+    </div>
+    <div class="stat-box" style="background:#e6f4ea">
+      <div class="num-big" style="color:var(--green)">70</div>
+      <div class="label" style="color:var(--green)">Total parquet files now</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Notable conversions</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>File</th><th>Original</th><th>Parquet</th><th>Rows</th></tr></thead>
+      <tbody>
+        <tr><td><code>kg.csv</code> → <code>kg.parquet</code></td><td>937 MB</td><td>49.9 MB</td><td>8.1 M</td></tr>
+        <tr><td><code>BindingDB_All_202409.tsv</code></td><td>818 MB</td><td>88.2 MB</td><td>421 K</td></tr>
+        <tr><td><code>DepMap_OmicsExpression…csv</code></td><td>498 MB</td><td>266 MB</td><td>1,684</td></tr>
+        <tr><td><code>DepMap_CRISPRGeneEffect.csv</code></td><td>411 MB</td><td>208 MB</td><td>1,183</td></tr>
+        <tr><td><code>DepMap_CRISPRGeneDependency.csv</code></td><td>404 MB</td><td>206 MB</td><td>1,183</td></tr>
+        <tr><td><code>sgRNA_KO_SP_human.txt</code></td><td>362 MB</td><td>114 MB</td><td>5.3 M</td></tr>
+        <tr><td><code>evebio_observed_points_table.csv</code></td><td>168 MB</td><td>5.7 MB</td><td>2.1 M</td></tr>
+        <tr><td><code>genebass_missense_LC…pkl</code> (DataFrame)</td><td>1.6 GB</td><td>905 MB</td><td>26.6 M</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h3>Directory layout after migration</h3>
+    <pre><code>data/biomni_data/data_lake/
+├── DATA_LAKE_INDEX.md      ← 📋 index of all 70 files (rows, cols, key columns)
+├── *.parquet               ← all active data (Biomni reads these)
+├── csv_originals/          ← archived originals (Biomni never sees this dir)
+│   ├── kg.csv
+│   ├── BindingDB_All_202409.tsv
+│   └── ... (30 files total)
+├── *.pkl                   ← non-DataFrame PKL files kept as-is
+├── go-plus.json            ← non-tabular, kept as-is
+└── hp.obo                  ← non-tabular, kept as-is</code></pre>
+    <p>The <code>csv_originals/</code> subdirectory is never listed to the Biomni agent — the agent discovers files with <code>glob(data_lake_path + "/*")</code> which doesn't recurse into subdirectories.</p>
+  </div>
+
+  <div class="card">
+    <h3>Biomni agent changes</h3>
+    <p><strong>env_desc.py / env_desc_cm.py:</strong> All data lake dict keys updated to <code>.parquet</code>. <code>DATA_LAKE_INDEX.md</code> added as first entry so the agent reads it before accessing any file.</p>
+    <p style="margin-top:8px;"><strong>a1.py CODING BEST PRACTICES section now says:</strong></p>
+    <pre><code>- DATA LAKE FORMAT: Most data lake files are in Parquet (.parquet) format.
+  ALWAYS use pd.read_parquet(path) — 10-100x faster than pd.read_csv for
+  large files. NEVER use pd.read_csv() on a .parquet file.
+- DATA LAKE INDEX: A file DATA_LAKE_INDEX.md exists in the data lake directory.
+  Read it first to understand available files, formats, and key columns.</code></pre>
+  </div>
+
+  <div class="callout success">
+    <span class="icon">✅</span>
+    <div><strong>Special handling:</strong> <code>gwas_catalog.pkl</code> had mixed <code>float</code>/<code>str</code> types in the <code>CHR_ID</code> column. Fixed by coercing all <code>object</code> columns to <code>str</code> before writing parquet. <code>genebass_pLoF_filtered.pkl</code> was genuinely corrupt (truncated) — kept in place as PKL.</div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ PART 5: API DESIGN -->
+<section id="api">
+  <div class="section-header">
+    <div class="num c-purple">5</div>
+    <h2>Biomni API Design — Chat History, Execution Logs &amp; PDF Saving</h2>
+    <span class="tag pill-purple pill">Reference</span>
+  </div>
+
+  <p style="margin-bottom:16px;">The Biomni API and Langflow component expose three key configuration knobs that control how conversation data flows through the system.</p>
+
+  <!-- use_chat_history -->
+  <div class="card">
+    <h3>1 · <code>use_chat_history</code> — Multi-turn vs. independent queries</h3>
+    <p>Controls whether conversation context is preserved across multiple API calls.</p>
+
+    <div class="diff-grid" style="margin-top:14px;">
+      <div>
+        <p style="font-size:.8rem;font-weight:600;color:var(--green);margin-bottom:6px;">✅ ENABLED — multi-turn conversation</p>
+        <div class="convo">
+          <div class="bubble-label">User</div>
+          <div class="bubble user">What is BRCA1?</div>
+          <div class="bubble-label">Biomni</div>
+          <div class="bubble agent">BRCA1 is a tumour suppressor gene involved in DNA repair…</div>
+          <div class="bubble-label">User</div>
+          <div class="bubble user">What are common mutations in <em>this gene</em>?</div>
+          <div class="bubble-label">Biomni</div>
+          <div class="bubble agent">Common BRCA1 mutations include 185delAG, 5382insC… ✅ Knows "this gene" = BRCA1</div>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:.8rem;font-weight:600;color:var(--red);margin-bottom:6px;">❌ DISABLED — independent queries</p>
+        <div class="convo">
+          <div class="bubble-label">User</div>
+          <div class="bubble user">What is BRCA1?</div>
+          <div class="bubble-label">Biomni</div>
+          <div class="bubble agent">BRCA1 is a tumour suppressor gene…</div>
+          <div class="bubble-label">User</div>
+          <div class="bubble user">What are common mutations in <em>this gene</em>?</div>
+          <div class="bubble-label">Biomni</div>
+          <div class="bubble agent">Which gene are you referring to? ❌ No context</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider" style="margin:16px 0 12px;"></div>
+    <div class="flex">
+      <span><strong>Use when:</strong></span>
+      <span class="pill pill-green">✅ Research dialogues</span>
+      <span class="pill pill-green">✅ Exploratory follow-ups</span>
+      <span class="pill pill-red">❌ Batch processing</span>
+      <span class="pill pill-red">❌ Independent queries</span>
+    </div>
+  </div>
+
+  <!-- include_execution_log -->
+  <div class="card">
+    <h3>2 · <code>include_execution_log</code> — Transparency for debugging</h3>
+    <p>When enabled, the response includes the full agent execution trace: reasoning steps, tool calls, intermediate results, and self-critique iterations.</p>
+    <div class="diff-grid" style="margin-top:14px;">
+      <div class="diff-before">
+        <strong>include_log = False (default)</strong>
+        <p style="font-size:.85rem;margin-top:6px;">BRCA1 is a tumour suppressor gene involved in DNA repair and genome stability.</p>
+      </div>
+      <div class="diff-after">
+        <strong>include_log = True</strong>
+        <p style="font-size:.85rem;margin-top:6px;">
+          BRCA1 is a tumour suppressor gene…<br><br>
+          <code style="font-size:.78rem;">[Execution Log]<br>
+          → query_pubmed("BRCA1 function")<br>
+          → Found 847 papers, top: "BRCA1 in DNA repair" (2023)<br>
+          → query_uniprot("BRCA1_HUMAN")<br>
+          → Self-critique: sufficient evidence? Yes<br>
+          Total: 3 tool calls, 4 reasoning steps</code>
+        </p>
+      </div>
+    </div>
+    <div class="flex" style="margin-top:12px;">
+      <span><strong>Use when:</strong></span>
+      <span class="pill pill-green">✅ Debugging agent behaviour</span>
+      <span class="pill pill-green">✅ Understanding tool use</span>
+      <span class="pill pill-red">❌ Production (adds latency + tokens)</span>
+    </div>
+  </div>
+
+  <!-- save_pdf -->
+  <div class="card">
+    <h3>3 · <code>save_pdf</code> — Conversation history export</h3>
+    <p>When <code>True</code>, saves the full conversation (query + agent reasoning + tool calls + answer) as a PDF to <code>local_outputs/&lt;timestamp&gt;/</code>. Note: with <code>BIOMNI_LOCAL_OUTPUTS=0</code> (the new default), a directory is only created on-demand when <code>save_pdf=True</code>.</p>
+
+    <div class="api-box">
+      <span class="comment"># Example API call</span><br>
+      <span class="method">POST</span> /chat<br>
+      {<br>
+      &nbsp;&nbsp;<span class="key">"query"</span>: <span class="val">"What genes are upregulated in BRCA1-mutant tumours?"</span>,<br>
+      &nbsp;&nbsp;<span class="key">"save_pdf"</span>: <span class="val">true</span>,<br>
+      &nbsp;&nbsp;<span class="key">"include_execution_log"</span>: <span class="val">false</span><br>
+      }
+    </div>
+
+    <div class="flex" style="margin-top:10px;">
+      <span><strong>Use when:</strong></span>
+      <span class="pill pill-green">✅ Research reports</span>
+      <span class="pill pill-green">✅ Audit trail needed</span>
+      <span class="pill pill-red">❌ Batch experiments (disk pressure)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Quick reference — when to enable what</h3>
+    <div class="tbl-wrap"><table>
+      <thead><tr>
+        <th>Use case</th>
+        <th><code>use_chat_history</code></th>
+        <th><code>include_execution_log</code></th>
+        <th><code>save_pdf</code></th>
+        <th><code>BIOMNI_LOCAL_OUTPUTS</code></th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Interactive research / UI</td><td>✅</td><td>optional</td><td>✅</td><td><code>1</code></td></tr>
+        <tr><td>Batch benchmark experiments</td><td>❌</td><td>❌</td><td>❌</td><td><code>0</code> (default)</td></tr>
+        <tr><td>Debugging agent failures</td><td>❌</td><td>✅</td><td>✅</td><td><code>1</code></td></tr>
+        <tr><td>Production API</td><td>depends</td><td>❌</td><td>❌</td><td><code>0</code></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ PART 6: SYSTEMD -->
+<section id="systemd">
+  <div class="section-header">
+    <div class="num c-green">6</div>
+    <h2>Process Isolation — Surviving tmux Crashes</h2>
+    <span class="tag pill-green pill">Best practice</span>
+  </div>
+
+  <p style="margin-bottom:16px;">API servers and the Gradio UI were originally started inside tmux sessions. When a tmux session died (for any reason — OOM, admin action, network hiccup), all servers died with it. We moved to <code>systemd-run --user --scope</code> for true process isolation.</p>
+
+  <div class="diff-grid">
+    <div class="diff-before">
+      <strong>❌ Fragile — dies with tmux</strong>
+<pre style="background:transparent;color:inherit;padding:0;font-size:.82rem;"><code>nohup uvicorn app:app \
+  --port 8020 \
+  > logs/server.log 2>&1 &
+
+# Survives terminal disconnect,
+# but NOT tmux session kill or
+# parent process death (SIGHUP)</code></pre>
+    </div>
+    <div class="diff-after">
+      <strong>✅ Robust — survives everything</strong>
+<pre style="background:transparent;color:inherit;padding:0;font-size:.82rem;"><code>systemd-run --user --scope \
+  --unit=biomni-8020 \
+  bash -c "exec uvicorn app:app \
+    --port 8020 \
+    > logs/server.log 2>&1"
+
+# Process owned by systemd user
+# slice — survives tmux kill,
+# logout, and SSH disconnect</code></pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Robust restart pattern (full sequence)</h3>
+    <p>When restarting a port that was already running (e.g., after a code update):</p>
+    <pre><code># Step 0: Clear zombie scopes from previous crashed runs
+systemctl --user daemon-reload
+
+for port in {8010..8022}; do
+  # Step 1: Kill the process instantly (no SIGTERM wait)
+  pid=$(lsof -t -i :$port 2>/dev/null)
+  [ -n "$pid" ] && kill -9 $pid 2>/dev/null
+
+  # Step 2: Clear the scope if it's in 'failed' state
+  systemctl --user reset-failed biomni-$port.scope 2>/dev/null
+
+  # Step 3: Launch fresh in a new scope
+  systemd-run --user --scope --unit=biomni-$port \
+    bash -c "exec uvicorn app:app --port $port > logs/server_$port.log 2>&1" &
+done</code></pre>
+
+    <div class="callout warn" style="margin-top:12px;">
+      <span class="icon">⚠️</span>
+      <div><strong>Why not <code>systemctl stop</code>?</strong> It sends SIGTERM and waits up to 90 seconds. If uvicorn is mid-query (e.g. a 3-minute LLM inference), the stop hangs. <code>kill -9</code> is instant and safe here because each request creates a fresh agent instance.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Checking scope status</h3>
+    <pre><code># List all running Biomni scopes
+systemctl --user list-units "biomni-*.scope"
+
+# Check if a specific port is running
+systemctl --user is-active biomni-8020.scope
+
+# View recent logs for a port
+journalctl --user -u biomni-8020.scope -n 50 --no-pager</code></pre>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════ APPENDIX -->
+<section>
+  <div class="section-header">
+    <div class="num" style="background:#5f6368">→</div>
+    <h2>Related Documents</h2>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Document</th><th>Contents</th></tr></thead>
+    <tbody>
+      <tr><td><a href="biomni_machine_stability_analysis.md"><code>biomni_machine_stability_analysis.md</code></a></td><td>Full evidence tables, memory stats, socket counts, 8 prioritized solutions</td></tr>
+      <tr><td><a href="biomni_performance_and_stability_fixes.md"><code>biomni_performance_and_stability_fixes.md</code></a></td><td>Technical detail on the 4 fixes in this blog post (this session)</td></tr>
+      <tr><td><a href="biomni_api_error_analysis_v3.md"><code>biomni_api_error_analysis_v3.md</code></a></td><td>v3 error log analysis: cache poisoning fix, column guessing, import hints</td></tr>
+      <tr><td><a href="biomni_local_dev_changelog.md"><code>biomni_local_dev_changelog.md</code></a></td><td>Full commit-by-commit changelog for this development cycle</td></tr>
+      <tr><td><a href="data_lake_index.md"><code>data_lake_index.md</code></a></td><td>Index of all 70 data lake parquet files (rows, columns, key column names)</td></tr>
+      <tr><td><a href="chat_history_and_execution_log.md"><code>chat_history_and_execution_log.md</code></a></td><td>Full API reference for chat history, execution log, and PDF saving features</td></tr>
+    </tbody>
+  </table></div>
+</section>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ FOOTER -->
+<footer>
+  <p>Biomni Engineering Notes · Internal document · AstraZeneca Informatics</p>
+  <p style="margin-top:6px;opacity:.6;">Branch: <code>private/local-development-v1</code> · Last updated: April 2026</p>
+</footer>
+
+</body>
+</html>

@@ -244,6 +244,8 @@ archive/
 *.png
 *.pdf
 *.html
+# Exception: tracked HTML docs in docs/
+!docs/*.html
 *.zip
 
 # Pickle files (data caches, not code)
