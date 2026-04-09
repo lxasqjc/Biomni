@@ -23,6 +23,8 @@ from typing import List, Dict, Any, Optional
 BIOMNI_DIR = Path(__file__).parent.absolute()
 SESSION_DIR = BIOMNI_DIR / "sessions"
 SESSION_DIR.mkdir(exist_ok=True, parents=True)
+# Agent writes plots/outputs here (relative to API server CWD = BIOMNI_DIR)
+AGENT_RESULTS_DIR = BIOMNI_DIR / "results"
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
 FILE_TYPES = ["csv", "xlsx", "xls", "tsv", "txt", "json", "md", "parquet", "py", "R"]
@@ -38,13 +40,15 @@ def init_session_state():
         "raw_logs": [],
         "running": False,
         "agent_thread": None,
-        "api_result": None,       # Stores {response, log, error} from completed API call
+        "api_result": None,       # Stores {response, log, pdf_path, result_files, error} from completed API call
         "current_session_dir": None,
         "result_files": [],
+        "pdf_path": None,         # PDF report path from last run
         "execution_steps": [],
         "current_step_id": 0,
         "processed_steps": [],
         "last_api_url": None,
+        "multi_turn": True,       # Whether to include prior conversation as context
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -300,13 +304,16 @@ def render_step(step: dict, index: int, session_dir: Path = None):
             for obs in step["observations"]:
                 with st.expander("📊 Output", expanded=True):
                     st.text(obs)
-                # Show any images referenced in observation
+                # Show any images referenced in observation — check both session dir and agent results dir
+                search_dirs = [AGENT_RESULTS_DIR]
                 if session_dir:
-                    results_dir = session_dir / "results"
-                    for match in re.findall(r"([\w\-\./\\]+\.(?:png|jpg|jpeg|gif|bmp|webp))", obs, re.I):
-                        fp = results_dir / Path(match).name
-                        if fp.exists():
+                    search_dirs.append(session_dir / "results")
+                for match in re.findall(r"([\w\-\./\\]+\.(?:png|jpg|jpeg|gif|bmp|webp))", obs, re.I):
+                    for base in search_dirs:
+                        fp = base / Path(match).name
+                        if fp.exists() and is_valid_image(fp):
                             st.image(str(fp), caption=fp.name, use_container_width=True)
+                            break
 
         elif step["type"] == "solution":
             solution_text = "\n".join(step["content"])
@@ -344,22 +351,42 @@ def render_step_tracker():
 # =====================
 # API Call (background thread)
 # =====================
+def _scan_new_files(since: float) -> list:
+    """Scan AGENT_RESULTS_DIR and local_outputs/ for files created after `since` (epoch float)."""
+    found = []
+    for scan_dir in [AGENT_RESULTS_DIR, BIOMNI_DIR / "local_outputs"]:
+        if not scan_dir.exists():
+            continue
+        for fp in scan_dir.rglob("*"):
+            try:
+                if fp.is_file() and not fp.name.startswith(".") and fp.stat().st_mtime >= since:
+                    found.append(fp)
+            except Exception:
+                pass
+    return sorted(found, key=lambda f: f.stat().st_mtime)
+
 def call_api_background(api_url: str, query: str, result_holder: dict):
     """Called in a background thread. Writes result to result_holder dict."""
+    start_epoch = result_holder.get("start_epoch", time.time())
     try:
         resp = _requests.post(
             f"{api_url.rstrip('/')}/chat",
-            json={"prompt": query, "save_pdf": False},
+            json={"prompt": query, "save_pdf": True},
             timeout=900,
         )
         resp.raise_for_status()
         data = resp.json()
         result_holder["response"] = data.get("response", "")
         result_holder["log"] = data.get("log", "")
+        result_holder["pdf_path"] = data.get("pdf_path")
         result_holder["error"] = None
+        # Scan for new files produced during this run
+        result_holder["new_files"] = _scan_new_files(start_epoch)
     except Exception as e:
         result_holder["response"] = f"❌ API Error: {e}"
         result_holder["log"] = ""
+        result_holder["pdf_path"] = None
+        result_holder["new_files"] = []
         result_holder["error"] = str(e)
     finally:
         result_holder["done"] = True
@@ -437,6 +464,14 @@ def render_sidebar():
         else:
             st.success("✅ Ready")
 
+        # Multi-turn toggle
+        st.session_state.multi_turn = st.checkbox(
+            "🔁 Multi-turn (include prior conversation as context)",
+            value=st.session_state.get("multi_turn", True),
+            key="cb_multi_turn",
+            help="When enabled, prior Q&A is prepended to each new question so the agent maintains context.",
+        )
+
         render_step_tracker()
 
     return {"api_url": api_url, "uploaded": uploaded}
@@ -461,18 +496,31 @@ if st.session_state.running:
         log_lines = log_raw.split("\n") if log_raw else []
         st.session_state.raw_logs.extend(log_lines)
 
-        # Add assistant message
+        # Add assistant message (short response only, not full log)
         st.session_state.messages.append({"role": "assistant", "content": response_text})
 
         # Parse steps
         st.session_state.processed_steps = parse_agent_output(log_lines)
 
+        # PDF report
+        st.session_state.pdf_path = result.get("pdf_path")
+
+        # Files produced during this run (plots, CSVs, etc.)
+        new_files = result.get("new_files") or []
+        # Also include session uploaded files
+        if st.session_state.current_session_dir:
+            session_files = scan_result_files(st.session_state.current_session_dir / "results")
+        else:
+            session_files = []
+        # Merge, deduplicate by path
+        all_files = {str(f): f for f in session_files}
+        for f in new_files:
+            all_files[str(f)] = f
+        st.session_state.result_files = list(all_files.values())
+
         # Save session
         if st.session_state.current_session_dir:
             save_conversation(st.session_state.current_session_dir)
-            st.session_state.result_files = scan_result_files(
-                st.session_state.current_session_dir / "results"
-            )
 
         st.session_state.api_result = None
 
@@ -520,16 +568,35 @@ with mid_col:
                     if not st.session_state.current_session_dir:
                         st.session_state.current_session_dir = create_session_dir()
 
-                # Add user message
+                # Multi-turn: prepend prior Q&A as conversation context
+                prior = [m for m in st.session_state.messages if m["role"] in ("user", "assistant")]
+                if st.session_state.get("multi_turn", True) and prior:
+                    history_lines = []
+                    for m in prior:
+                        role_label = "User" if m["role"] == "user" else "Assistant"
+                        # Truncate very long assistant responses to avoid prompt bloat
+                        content = m["content"]
+                        if m["role"] == "assistant" and len(content) > 1000:
+                            content = content[:1000] + "\n... [truncated]"
+                        history_lines.append(f"{role_label}: {content}")
+                    history_str = "\n\n".join(history_lines)
+                    augmented_prompt = (
+                        f"Prior conversation context:\n{history_str}\n\n"
+                        f"New request:\n{augmented_prompt}"
+                    )
+
+                # Add user message to display history
                 st.session_state.messages.append({"role": "user", "content": prompt.strip()})
                 st.session_state.raw_logs = []
                 st.session_state.processed_steps = []
                 st.session_state.execution_steps = []
                 st.session_state.current_step_id = 0
                 st.session_state.last_api_url = api_url
+                st.session_state.result_files = []
+                st.session_state.pdf_path = None
 
                 # Start background API call
-                result_holder: dict = {"done": False}
+                result_holder: dict = {"done": False, "start_epoch": time.time()}
                 st.session_state.api_result = result_holder
                 st.session_state.running = True
 
@@ -564,10 +631,33 @@ with right_col:
     with tab1:
         st.subheader("Generated Files")
 
+        # PDF Report download (prominent, at top)
+        if st.session_state.get("pdf_path"):
+            pdf_p = Path(st.session_state.pdf_path)
+            if pdf_p.exists():
+                with open(pdf_p, "rb") as f:
+                    st.download_button(
+                        label="📄 Download PDF Report",
+                        data=f.read(),
+                        file_name=pdf_p.name,
+                        mime="application/pdf",
+                        key=f"pdf_{pdf_p.stem}",
+                        type="primary",
+                        use_container_width=True,
+                    )
+                st.caption(f"Saved: `{pdf_p}`")
+                st.divider()
+
         if st.session_state.result_files:
             for fp in st.session_state.result_files:
+                # Skip the PDF (already shown above) and hidden files
+                if fp.suffix.lower() == ".pdf" or fp.name.startswith("."):
+                    continue
                 name = fp.name
-                size = fp.stat().st_size
+                try:
+                    size = fp.stat().st_size
+                except Exception:
+                    continue
 
                 if is_valid_image(fp):
                     try:
@@ -585,12 +675,10 @@ with right_col:
                         )
                 except Exception:
                     st.caption(f"📄 {name}")
-        else:
+
+        elif not st.session_state.get("pdf_path"):
             st.info("No results yet")
-            st.caption(
-                "Results generated by the agent are saved by the API server.\n"
-                "Files uploaded via sidebar will appear here after analysis."
-            )
+            st.caption("Plots and files saved to `./results/` by the agent will appear here after a run.")
 
     with tab2:
         st.subheader("Execution Logs")
