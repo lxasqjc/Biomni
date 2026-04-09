@@ -349,7 +349,7 @@ def call_api_background(api_url: str, query: str, result_holder: dict):
     try:
         resp = _requests.post(
             f"{api_url.rstrip('/')}/chat",
-            json={"query": query, "save_pdf": False},
+            json={"prompt": query, "save_pdf": False},
             timeout=900,
         )
         resp.raise_for_status()
