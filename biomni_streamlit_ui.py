@@ -365,14 +365,14 @@ def _scan_new_files(since: float) -> list:
                 pass
     return sorted(found, key=lambda f: f.stat().st_mtime)
 
-def call_api_background(api_url: str, query: str, result_holder: dict):
+def call_api_background(api_url: str, query: str, result_holder: dict, timeout_sec: int = 1200):
     """Called in a background thread. Writes result to result_holder dict."""
     start_epoch = result_holder.get("start_epoch", time.time())
     try:
         resp = _requests.post(
             f"{api_url.rstrip('/')}/chat",
             json={"prompt": query, "save_pdf": True},
-            timeout=900,
+            timeout=timeout_sec,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -404,8 +404,15 @@ def render_sidebar():
                 "API Endpoint",
                 value=st.session_state.get("last_api_url") or DEFAULT_API_URL,
                 key="sidebar_api_url",
-                help="e.g. http://localhost:8020",
+                help="Point to a lightly-loaded port to avoid competing with benchmark runs.",
             )
+            timeout_min = st.number_input(
+                "Timeout (minutes)",
+                min_value=5, max_value=120, value=st.session_state.get("api_timeout_min", 20),
+                step=5, key="sidebar_timeout_min",
+                help="Increase for long-running analyses.",
+            )
+            st.session_state.api_timeout_min = timeout_min
         api_url = st.session_state.get("sidebar_api_url", DEFAULT_API_URL)
 
         st.divider()
@@ -475,7 +482,6 @@ def render_sidebar():
         render_step_tracker()
 
     return {"api_url": api_url, "uploaded": uploaded}
-
 # =====================
 # Main Layout
 # =====================
@@ -599,10 +605,11 @@ with mid_col:
                 result_holder: dict = {"done": False, "start_epoch": time.time()}
                 st.session_state.api_result = result_holder
                 st.session_state.running = True
+                timeout_sec = int(st.session_state.get("api_timeout_min", 20)) * 60
 
                 t = threading.Thread(
                     target=call_api_background,
-                    args=(api_url, augmented_prompt, result_holder),
+                    args=(api_url, augmented_prompt, result_holder, timeout_sec),
                     daemon=True,
                 )
                 t.start()
