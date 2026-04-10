@@ -1190,6 +1190,8 @@ CODING BEST PRACTICES:
 - Validate data before operations: check df.empty, check array/list length > 0, verify dtypes match expected types.
 - numpy does NOT have a skew() function. Use scipy.stats.skew() or pd.Series.skew() instead.
 - import math explicitly if you need math functions (math.log, math.sqrt, etc.).
+- SAVING PLOTS AND FILES: ALWAYS save plots and output files to the './results/' directory. Create it first with os.makedirs('./results/', exist_ok=True). Use plt.savefig('./results/filename.png') — NEVER use a bare filename like plt.savefig('filename.png') which saves to an unpredictable location.
+- FILE PATHS: ALWAYS use the BIOMNI_DATA_PATH variable (already available in your environment) when referencing data files. Example: os.path.join(BIOMNI_DATA_PATH, 'ibd_clean_xavier/file.csv'). Do NOT manually construct absolute paths containing 'biomni_data' — this causes double-directory errors like '.../biomni_data/biomni_data/...'.
 """
 
         # Add custom resources section first (highlighted)

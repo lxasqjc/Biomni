@@ -351,9 +351,18 @@ def render_step_tracker():
 # =====================
 # API Call (background thread)
 # =====================
+# Image/data extensions worth surfacing in the UI
+_RESULT_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp",
+                ".pdf", ".csv", ".tsv", ".xlsx", ".html", ".txt", ".json", ".parquet"}
+
 def _scan_new_files(since: float) -> list:
-    """Scan AGENT_RESULTS_DIR and local_outputs/ for files created after `since` (epoch float)."""
+    """Scan for files created after `since` (epoch float) in:
+    - AGENT_RESULTS_DIR (./results/ — agent saves plots here when following best practices)
+    - BIOMNI_DIR root   (agent saves with bare filename like 'plot.png' → lands in CWD)
+    - local_outputs/    (when BIOMNI_LOCAL_OUTPUTS=1)
+    """
     found = []
+    # Deep scan of results/ and local_outputs/
     for scan_dir in [AGENT_RESULTS_DIR, BIOMNI_DIR / "local_outputs"]:
         if not scan_dir.exists():
             continue
@@ -363,7 +372,18 @@ def _scan_new_files(since: float) -> list:
                     found.append(fp)
             except Exception:
                 pass
-    return sorted(found, key=lambda f: f.stat().st_mtime)
+    # Shallow scan of BIOMNI_DIR root for new images/data files
+    # (catches plt.savefig("plot.png") with no directory prefix)
+    for fp in BIOMNI_DIR.iterdir():
+        try:
+            if (fp.is_file()
+                    and fp.suffix.lower() in _RESULT_EXTS
+                    and not fp.name.startswith(".")
+                    and fp.stat().st_mtime >= since):
+                found.append(fp)
+        except Exception:
+            pass
+    return sorted(set(found), key=lambda f: f.stat().st_mtime)
 
 def call_api_background(api_url: str, query: str, result_holder: dict, timeout_sec: int = 1200):
     """Called in a background thread. Writes result to result_holder dict."""
